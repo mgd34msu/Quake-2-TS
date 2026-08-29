@@ -148,10 +148,7 @@ describe("gl_warp.ts -- ClipSkyPolygon", () => {
 });
 
 describe("gl_rsurf.ts -- R_RecursiveWorldNode", () => {
-  // todo until gl_rmain.ts lands: R_RecursiveWorldNode calls gl_rmain's
-  // R_CullBox, which is still a PendingPort stub. Flip back to test() when
-  // the RG3 unit (gl_rmain/gl_rmisc/gl_mesh) replaces the stub.
-  test.todo("visits front subtree before back subtree on a fabricated node/leaf tree", () => {
+  test("visits front subtree before back subtree on a fabricated node/leaf tree", () => {
     R_DrawAlphaSurfaces(); // reset r_alpha_surfaces to null regardless of prior state
 
     SetVisFrameCount(7);
