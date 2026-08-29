@@ -19,7 +19,6 @@ import {
   SetGEdicts,
 } from "../src/game/g_local";
 import { AI_SetSightClient, ai_checkattack, ai_stand, infront, range, visible } from "../src/game/g_ai";
-import { PendingPort } from "../src/qcommon/pending";
 
 // ---------------------------------------------------------------------------
 // fake GameImports: a per-test trace function, everything else a no-op.
@@ -283,12 +282,8 @@ describe("ai_stand", () => {
       threw = err;
     }
 
-    if (threw !== undefined) {
-      expect(threw).toBeInstanceOf(PendingPort);
-      console.log(`ai_stand hit a pending sibling stub: ${(threw as Error).message}`);
-    } else {
-      expect(walked).toBe(true);
-    }
+    if (threw !== undefined) throw threw; // no pending stubs remain; any throw is a real bug
+    expect(walked).toBe(true);
   });
 
   test("with AI_STAND_GROUND and an enemy, turns toward the enemy and runs ai_checkattack", () => {
@@ -315,10 +310,8 @@ describe("ai_stand", () => {
       threw = err;
     }
 
-    if (threw !== undefined) {
-      expect(threw).toBeInstanceOf(PendingPort);
-      console.log(`ai_stand hit a pending sibling stub: ${(threw as Error).message}`);
-    } else {
+    if (threw !== undefined) throw threw; // no pending stubs remain; any throw is a real bug
+    {
       // ideal_yaw points from self (0,0,0) toward enemy (100,0,0): straight
       // along +X, i.e. yaw 0.
       expect(self.ideal_yaw).toBeCloseTo(0, 1);

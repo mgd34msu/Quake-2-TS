@@ -125,6 +125,20 @@ export function SetErrorHandlers(svShutdown: (finalmsg: string, reconnect: boole
   clDropHandler = clDrop;
 }
 
+// sv_init.c calls the client's CL_Drop/SCR_BeginLoadingPlaque directly in
+// the combined (non-dedicated) build; server modules reach them through
+// these same registered handlers instead of importing the client.
+let scrBeginLoadingPlaqueHandler: (() => void) | null = null;
+export function SetLoadingPlaqueHandler(fn: () => void): void {
+  scrBeginLoadingPlaqueHandler = fn;
+}
+export function SCR_BeginLoadingPlaqueHook(): void {
+  if (scrBeginLoadingPlaqueHandler) scrBeginLoadingPlaqueHandler();
+}
+export function CL_DropHook(): void {
+  if (clDropHandler) clDropHandler();
+}
+
 // common.c's `int time_before_game, time_after_game, time_before_ref,
 // time_after_ref;` (qcommon.h externs them). Written from sv_main.ts and the
 // renderer, read by Qcommon_Frame's host_speeds report in src/main.ts, so

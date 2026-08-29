@@ -14,7 +14,6 @@ import {
   MAX_QPATH,
   Q_stricmp,
 } from "../shared/q_shared";
-import { PendingPort } from "../qcommon/pending";
 import {
   type EdictT,
   FL_GODMODE,

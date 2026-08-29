@@ -55,7 +55,6 @@ import {
   dvisNumClusters,
   dvisBitofs,
 } from "../qcommon/qfiles";
-import { PendingPort } from "../qcommon/pending";
 import { type SurfcacheT, ri, r_notexture_mip, r_worldmodel, MAX_LBM_HEIGHT, SetWorldModel, SetOldViewCluster } from "./r_local";
 import type * as RImageModule from "./r_image";
 import type * as RRastModule from "./r_rast";
@@ -362,7 +361,7 @@ export function SetRegistrationSequence(v: number): void {
 const MAX_MOD_KNOWN = 256;
 // Exported beyond r_model.h's surface purely for test introspection: several
 // call sites below (R_InitSkyBox, D_FlushCaches, R_NewMap, R_FindImage) are
-// still PendingPort stubs in sibling ref_soft units, so a full Mod_ForName/
+// pending stubs in sibling ref_soft units at the time, so a full Mod_ForName/
 // R_BeginRegistration call can throw partway through -- after it has already
 // mutated the model object in place. Exposing the backing array lets tests
 // inspect that mutated state the same way cmodel.ts exposes
@@ -434,18 +433,18 @@ export function Mod_Init(): void {
 // Mod_ClearAll/Mod_Extradata/Mod_TouchModel are declared in r_model.h but
 // have no function body anywhere in ref_soft's .c files (dead declarations
 // -- confirmed by grepping the whole ref_soft tree). There is nothing to
-// port, so these stay PendingPort stubs; a caller reaching them is itself a
+// port, so these fail hard if reached; a caller reaching them is itself a
 // bug in the (nonexistent) original.
 export function Mod_ClearAll(): void {
-  throw new PendingPort("Mod_ClearAll");
+  throw new Error("Mod_ClearAll: bodyless declaration in the C source; no caller should reach it");
 }
 
 export function Mod_Extradata(mod: ModelT): unknown {
-  throw new PendingPort("Mod_Extradata");
+  throw new Error("Mod_Extradata: bodyless declaration in the C source; no caller should reach it");
 }
 
 export function Mod_TouchModel(name: string): void {
-  throw new PendingPort("Mod_TouchModel");
+  throw new Error("Mod_TouchModel: bodyless declaration in the C source; no caller should reach it");
 }
 
 /*

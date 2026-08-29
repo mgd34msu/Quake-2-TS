@@ -27,7 +27,6 @@ every node/leaf/plane/submodel field already correctly populated.
 import { describe, test, expect, beforeEach } from "bun:test";
 import type { RefImports } from "../src/client/ref";
 import { SetRefImports } from "../src/ref_soft/r_local";
-import { PendingPort } from "../src/qcommon/pending";
 import { vec3 } from "../src/shared/math";
 import { CONTENTS_SOLID } from "../src/shared/q_shared";
 import { Mod_FreeAll,

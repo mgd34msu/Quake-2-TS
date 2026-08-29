@@ -47,7 +47,6 @@ import {
   type UsercmdT,
   YAW,
 } from "../shared/q_shared";
-import { PendingPort } from "../qcommon/pending";
 import { type Edict, type GTraceT, SolidT, SVF_DEADMONSTER, SVF_NOCLIENT } from "./game";
 import {
   ANIM_DEATH,

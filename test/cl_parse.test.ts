@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { PendingPort } from "../src/qcommon/pending";
 import { ComError, SvcOpsT } from "../src/qcommon/qcommon";
 import { SZ_Clear, MSG_BeginReading, MSG_WriteByte, MSG_WriteShort, MSG_WriteLong, MSG_WriteDeltaEntity } from "../src/qcommon/sizebuf";
 import { net_message } from "../src/qcommon/net_chan";

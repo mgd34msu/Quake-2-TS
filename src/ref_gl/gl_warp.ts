@@ -40,7 +40,7 @@ with no further edits here.
 
 `loadmodel` (gl_warp.c's `extern model_t *loadmodel;`, gl_model.c's "model
 currently loading" global) has no equivalent export yet in gl_model.ts (a
-concurrently-ported sibling, still all PendingPort). Checked gl_model.c's
+concurrently-ported sibling at the time; all real now). Checked gl_model.c's
 own call site for GL_SubdivideSurface (Mod_LoadFaces, right after
 `currentmodel = loadmodel;`): by the time GL_SubdivideSurface runs for
 real, `currentmodel` (already a real, landed export in gl_local.ts) holds

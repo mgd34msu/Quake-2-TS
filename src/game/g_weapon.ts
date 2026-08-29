@@ -82,7 +82,6 @@ import {
   PNOISE_IMPACT,
   svc_temp_entity,
 } from "./g_local";
-import { PendingPort } from "../qcommon/pending";
 import { PlayerNoise } from "./p_weapon";
 
 import { ThrowDebris } from "./g_misc";

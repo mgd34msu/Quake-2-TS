@@ -301,9 +301,13 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
   });
 
   test("'connect localhost' (issued in beforeAll, before the server booted) drives ca_connecting -> ca_connected over the real loopback rings once the server comes up, then proceeds through ClientConnect/ClientUserinfoChanged/ClientBegin before stopping in cmodel.ts's area-portal code", async () => {
-    // beforeAll already issued "connect localhost" and confirmed
-    // ca_connecting before booting the server -- see its comment for why
-    // the ordering matters (CL_Connect_f's SV_Shutdown-if-hosting branch).
+    // beforeAll issued "connect localhost" and confirmed ca_connecting
+    // before booting the server. Booting then runs SV_InitGame, whose
+    // C-faithful CL_Drop() (wired via SetErrorHandlers-era hooks) drops the
+    // connecting client -- and CL_CheckForResend re-enters ca_connecting on
+    // the next command tick because Com_ServerState() reports the local
+    // server, exactly the C local-connect flow.
+    if (cls.state === ConnstateT.ca_disconnected) CL_SendCommand();
     expect(cls.state).toBe(ConnstateT.ca_connecting);
     expect(cls.servername).toBe("localhost");
 

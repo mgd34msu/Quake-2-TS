@@ -7,7 +7,6 @@ its C function name (PORTING.md's "Pending stubs" convention).
 */
 
 import { describe, test, expect } from "bun:test";
-import { PendingPort } from "../src/qcommon/pending";
 import { CplaneT } from "../src/shared/q_shared";
 import { vec3 } from "../src/shared/math";
 import {
@@ -204,15 +203,8 @@ describe("platform/swimp.ts (headless video)", () => {
   });
 });
 
-describe("PendingPort stubs", () => {
-  test("a ref_soft stub throws PendingPort with its C function name", () => {
-    expect(() => Mod_ClearAll()).toThrow(PendingPort);
-    try {
-      Mod_ClearAll();
-      throw new Error("expected Mod_ClearAll to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(PendingPort);
-      expect((err as Error).message).toContain("Mod_ClearAll");
-    }
+describe("bodyless C declarations", () => {
+  test("Mod_ClearAll (bodyless in the C source) fails hard with its name", () => {
+    expect(() => Mod_ClearAll()).toThrow(/Mod_ClearAll/);
   });
 });

@@ -27,7 +27,7 @@
 
 import { CVAR_NOSET, CVAR_SERVERINFO, Com_sprintf } from "./shared/q_shared";
 import { ComError, ERR_FATAL, VERSION, CPUSTRING, BUILDSTRING } from "./qcommon/qcommon";
-import { SetErrorHandlers,
+import { SetErrorHandlers, SetLoadingPlaqueHandler,
   COM_InitArgv,
   Com_Printf,
   Com_Error,
@@ -67,6 +67,7 @@ import { NET_Init } from "./platform/net_udp";
 import { Sys_ConsoleInput, Sys_Error, Sys_Milliseconds } from "./platform/sys";
 import { SV_Frame, SV_Init, SV_Shutdown } from "./server/sv_main";
 import { CL_Drop, CL_Frame, CL_Init, Cmd_ForwardToServer } from "./client/cl_main";
+import { SCR_BeginLoadingPlaque } from "./client/cl_scrn";
 import { Key_Init } from "./client/keys_impl";
 import { SCR_EndLoadingPlaque } from "./client/cl_scrn";
 import { SDL_SetBackendEnabled } from "./platform/sdl";
@@ -97,6 +98,7 @@ export function Qcommon_Init(argv: string[]): void {
     // cmd.ts models that link-time binding as a registrable hook.
     setCmdForwardToServerHandler(Cmd_ForwardToServer);
     SetErrorHandlers(SV_Shutdown, CL_Drop);
+    SetLoadingPlaqueHandler(SCR_BeginLoadingPlaque);
 
     Key_Init();
 

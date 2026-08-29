@@ -1,5 +1,4 @@
 import { describe, test, expect } from "bun:test";
-import { PendingPort } from "../src/qcommon/pending";
 import {
   cl,
   cls,

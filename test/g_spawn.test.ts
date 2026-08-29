@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { ComParseState } from "../src/shared/math";
 import { vec3 } from "../src/shared/math";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
-import { PendingPort } from "../src/qcommon/pending";
 import type { Edict, GameImports, GTraceT } from "../src/game/game";
 import { GetGameAPI } from "../src/game/g_main";
 import {

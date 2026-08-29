@@ -17,7 +17,7 @@ unit's SCOPE (a future src/platform/** unit owns them). No such module exists
 under src/platform/ yet, so this file declares the small local `GLimp`
 interface + `glimp` holder + `SetGLimp()` setter the brief asks for; every
 member throws `GLimpNotWired` (a plain local error, deliberately distinct
-from `PendingPort` -- this holder is a genuine forward integration seam for
+from a pending stub -- this holder is a genuine forward integration seam for
 a different, not-yet-started unit, not a stand-in for something this unit
 should have ported itself) until a future platform unit calls `SetGLimp`.
 `R_SwapBuffers` (declared in gl_local.h, never defined in any gl_*.c file --

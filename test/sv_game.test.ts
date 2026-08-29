@@ -16,7 +16,6 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { GAME_API_VERSION } from "../src/game/game";
-import { PendingPort } from "../src/qcommon/pending";
 import { ComError } from "../src/qcommon/qcommon";
 import { NetadrT, NetsrcT } from "../src/qcommon/qcommon";
 import { Netchan_Setup } from "../src/qcommon/net_chan";

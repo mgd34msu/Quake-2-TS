@@ -437,9 +437,9 @@ export function FS_Read(buffer: Uint8Array, len: number, handle: number): void {
     }
 
     if (read === 0) {
-      // we might have been trying to read from a CD -- CDAudio_Stop() is
-      // client code not yet ported (owning module: src/client/cl_cin.ts);
-      // the retry-once-then-fail structure is kept without it.
+      // we might have been trying to read from a CD -- this port has no CD
+      // audio subsystem (cd_null is the one backend), so C's CDAudio_Stop()
+      // has no equivalent; the retry-once-then-fail structure is kept.
       if (!tries) {
         tries = 1;
       } else {

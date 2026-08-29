@@ -9,7 +9,7 @@ comment for why that's safe here).
 
 `r_rawpalette` is `extern unsigned r_rawpalette[256];` in gl_draw.c but
 defined in gl_rmain.c (R_SetPalette's target) -- a sibling unit, still a
-PendingPort stub, out of this SCOPE. Declared here as a zero-initialized
+pending stub at the time (real now, out of this unit's SCOPE). Declared here as a zero-initialized
 holder with a `SetRawPalette` setter (mirrors gl_local.ts's `ri`/
 SetRefImports pattern) for that future unit to wire R_SetPalette to.
 

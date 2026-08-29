@@ -11,7 +11,7 @@
 // SV_ServerRecord_f's demo file) now does the real thing instead of a
 // logged no-op. SV_WriteLevelFile/SV_WriteServerFile/SV_ServerRecord_f still
 // call through to `ge.WriteLevel`/`WriteGame`/(SV_ReadServerFile's
-// `ge.ReadGame`), which throw PendingPort until g_save.ts lands (a sibling
+// `ge.ReadGame`), implemented by g_save.ts (a sibling
 // unit's concurrent work, not touched here) -- that remains the actually-
 // blocking reason `save`/`load` cannot complete end-to-end yet, not a
 // file-I/O gap.

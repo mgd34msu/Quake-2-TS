@@ -18,19 +18,11 @@ Dropped `#if 0` block (PORTING.md: "#if 0 blocks are dropped silently"):
 WaterWarpPolyVerts/DrawGLWaterPoly/DrawGLWaterPolyLightmap are `#if 0`'d out
 in the real gl_rsurf.c (dead code, superseded by gl_warp.ts's EmitWaterPolys
 sin-table warp) -- not ported. The previous pending-stub file exported a
-`WaterWarpPolyVerts` throwing PendingPort; removed, since it does not
+`WaterWarpPolyVerts` throwing a pending-stub error; removed, since it does not
 correspond to any compiled C code.
 
-Missing sibling exports (reported gaps, not fixed here -- out of this
-unit's SCOPE):
-  - gl_rmain.c's R_CullBox/R_RotateForEntity ARE already exported by
-    gl_rmain.ts (a concurrently-ported sibling) but both still throw
-    PendingPort. R_RecursiveWorldNode/R_DrawBrushModel call them exactly as
-    the C does; until gl_rmain.ts lands for real, any code path that
-    reaches a visible BSP node or a brush-model entity will throw. This
-    unit's own R_RecursiveWorldNode test is written against real R_CullBox
-    behavior (matching test/ref_world.test.ts's fabricated-tree approach)
-    and will only pass once that sibling's stub is replaced.
+gl_rmain.c's R_CullBox/R_RotateForEntity are imported from gl_rmain.ts
+(landed after this unit; the original concurrent-port caveats are gone).
 
 Extension-availability null-checks (`if (qglMTexCoord2fSGIS)`, `if
 (qglSelectTextureSGIS)`) are kept as literal `qgl.qglMTexCoord2fSGIS` /
@@ -44,8 +36,7 @@ is already redesigned (see that file's header comment) as a growable
 `Float32Array[]` rather than a fixed C flexible-array-member struct, so no
 Hunk_Alloc call is needed or made here -- `new GlpolyT()` plus a plain array
 build reproduces the same populated fields. Hunk_Alloc itself remains an
-unrelated PendingPort in gl_model.ts for the model-loading arena, untouched
-by this file.
+not used by this file (see gl_model.ts's header).
 
 QGL binding: `qgl`/`SetQGL` are owned by gl_image.ts (a concurrently-ported
 sibling that landed mid-unit; see that file's header comment) and imported

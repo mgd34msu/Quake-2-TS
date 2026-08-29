@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { vec3 } from "../src/shared/math";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
-import { PendingPort } from "../src/qcommon/pending";
 import {
   CheckDMRules,
   ClientEndServerFrames,

@@ -34,7 +34,6 @@ import {
   vectoyaw,
   vtos,
 } from "../src/game/g_utils";
-import { PendingPort } from "../src/qcommon/pending";
 import { vec3 } from "../src/shared/math";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
 

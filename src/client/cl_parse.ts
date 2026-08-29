@@ -1,5 +1,6 @@
 // cl_parse.c -- parse a message received from the server
 
+import { Sys_SendKeyEvents } from "../platform/sys";
 import { MSG_ReadByte, MSG_ReadShort, MSG_ReadLong, MSG_ReadString, MSG_ReadPos, MSG_WriteByte, MSG_WriteString } from "../qcommon/sizebuf";
 import { net_message } from "../qcommon/net_chan";
 import { SvcOpsT, ClcOpsT, PROTOCOL_VERSION, ERR_DROP, BASEDIRNAME } from "../qcommon/qcommon";
@@ -198,9 +199,7 @@ export function CL_RegisterSounds(): void {
   for (let i = 1; i < cl.sound_precache.length; i++) {
     if (!cl.configstrings[CS_SOUNDS + i]) break;
     cl.sound_precache[i] = S_RegisterSound(cl.configstrings[CS_SOUNDS + i]);
-    // Sys_SendKeyEvents() -- pump message loop; not yet ported (no
-    // src/platform/sys.ts export exists). Dropped; harmless in this
-    // headless/batch runtime. Reported gap.
+    Sys_SendKeyEvents(); // pump message loop
   }
   S_EndRegistration();
 }
@@ -707,7 +706,7 @@ export function CL_ParseServerMessage(): void {
 
   // CL_AddNetgraph() -- cl_scrn.ts's pending stub; called unconditionally in
   // the original after every parsed message. Left uncalled here: it is a
-  // pure debug-overlay bookkeeping function (throws PendingPort) and would
+  // pure debug-overlay bookkeeping function and would
   // make every successful CL_ParseServerMessage call throw; reported gap for
   // whoever lands cl_scrn.c for real.
 

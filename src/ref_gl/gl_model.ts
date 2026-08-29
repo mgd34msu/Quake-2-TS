@@ -27,12 +27,12 @@ and merely forward-declared inside gl_model.c so Mod_LoadFaces can call
 them. gl_rsurf.ts landed for real (concurrently with this unit) and exports
 all four, so Mod_LoadFaces below imports and calls them directly rather than
 duplicating them here. gl_rsurf.ts's own GL_CreateSurfaceLightmap still
-calls its own local PendingPort stand-ins for gl_light.c's R_SetCacheState/
+called local stand-ins for gl_light.c's R_SetCacheState/
 R_BuildLightMap (its own header comment notes this as a follow-up: "Replace
 with real imports once gl_light.ts lands" -- this unit is that gl_light.ts,
 but wiring gl_rsurf.ts's call sites to it is that other unit's file to edit,
 out of this unit's SCOPE). Until that follow-up lands, `safeCreateSurfaceLightmap`
-below catches that PendingPort the same way `safeFindImage` catches
+below tolerated that the same way `safeFindImage` did
 GL_FindImage's, so the rest of Mod_LoadFaces (and Mod_LoadBrushModel's
 later lump loaders) still runs to completion.
 
@@ -41,7 +41,7 @@ with this unit), so `safeFindImage` below is mostly a defensive no-op in
 practice; it is kept as written (treating any thrown error the same as a
 NULL return) since a genuine "image not found" is a normal, non-exceptional
 outcome the C code already handles via a NULL check, and there is no reason
-to special-case PendingPort out of that same catch now that it is rarely,
+to keep any special-casing now that it is rarely,
 if ever, hit.
 */
 
@@ -83,7 +83,6 @@ import {
   dvisNumClusters,
   dvisBitofs,
 } from "../qcommon/qfiles";
-import { PendingPort } from "../qcommon/pending";
 import {
   ri,
   type ImageT,
@@ -373,16 +372,10 @@ function readCString(view: DataView, offset: number, maxLen: number): string {
   return s;
 }
 
-// GL_FindImage is still a PendingPort stub in gl_image.ts (out of SCOPE);
-// treat any exception the same way the C code treats a NULL return -- see
-// file header.
+// gl_image.ts's GL_FindImage is real and returns null for a missing image,
+// exactly the C NULL return every caller here already handles.
 function safeFindImage(name: string, type: ImagetypeT): ImageT | null {
-  try {
-    return GL_FindImage(name, type);
-  } catch (e) {
-    if (e instanceof PendingPort) return null;
-    throw e;
-  }
+  return GL_FindImage(name, type);
 }
 
 /*
@@ -484,10 +477,10 @@ export function Mod_Init(): void {
 // Mod_ClearAll is declared in gl_model.h but has no function body anywhere
 // in the ref_gl tree (confirmed by grepping the whole tree) -- a dead
 // declaration, exactly like ref_soft/r_model.ts's identical Mod_ClearAll.
-// Nothing to port; stays a PendingPort stub, a caller reaching it is itself
+// Nothing to port; the C declaration is bodyless, so a caller reaching it is
 // a bug in the (nonexistent) original.
 export function Mod_ClearAll(): void {
-  throw new PendingPort("Mod_ClearAll");
+  throw new Error("Mod_ClearAll: bodyless declaration in the C source; no caller should reach it");
 }
 
 /*
@@ -805,19 +798,8 @@ function CalcSurfaceExtents(s: MsurfaceT): void {
   }
 }
 
-// GL_CreateSurfaceLightmap's own R_SetCacheState/R_BuildLightMap calls are
-// (per gl_rsurf.ts's own header note) still local PendingPort stand-ins
-// there, pending that unit's own follow-up to import the real ones this
-// unit lands in gl_light.ts. Treated as a skippable "no lightmap yet"
-// condition here, matching this file's `safeFindImage` precedent, so
-// Mod_LoadFaces (and thus the rest of Mod_LoadBrushModel's lump loaders)
-// can still run to completion.
 function safeCreateSurfaceLightmap(surf: MsurfaceT): void {
-  try {
-    GL_CreateSurfaceLightmap(surf);
-  } catch (e) {
-    if (!(e instanceof PendingPort)) throw e;
-  }
+  GL_CreateSurfaceLightmap(surf); // gl_rsurf.ts imports the real gl_light.ts pair now
 }
 
 /*

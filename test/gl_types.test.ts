@@ -7,7 +7,6 @@ glstate_t/image_t faithful defaults from gl_local.ts.
 */
 
 import { describe, test, expect } from "bun:test";
-import { PendingPort } from "../src/qcommon/pending";
 import {
   GlconfigT,
   GlstateT,
@@ -119,15 +118,8 @@ describe("ref_gl/gl_local.ts and gl_model.ts type core", () => {
   });
 });
 
-describe("PendingPort stubs", () => {
-  test("a ref_gl stub throws PendingPort with its C function name", () => {
-    expect(() => Mod_ClearAll()).toThrow(PendingPort);
-    try {
-      Mod_ClearAll();
-      throw new Error("expected Mod_ClearAll to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(PendingPort);
-      expect((err as Error).message).toContain("Mod_ClearAll");
-    }
+describe("bodyless C declarations", () => {
+  test("Mod_ClearAll (bodyless in the C source) fails hard with its name", () => {
+    expect(() => Mod_ClearAll()).toThrow(/Mod_ClearAll/);
   });
 });

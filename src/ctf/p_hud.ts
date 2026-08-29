@@ -12,7 +12,7 @@
 //
 // `Cmd_Score_f`/`Cmd_Help_f` are declared in g_local.h and called from
 // g_cmds.c's ClientCommand, but defined here in p_hud.c. g_cmds.ts
-// currently carries local `PendingPort` stubs of the same two names with a
+// carried local pending stubs of the same two names at the time, with a
 // comment flagging this exact follow-up (import from p_hud.ts once it
 // lands); g_cmds.ts is outside this unit's SCOPE, so that swap is reported
 // as a follow-up rather than made here.

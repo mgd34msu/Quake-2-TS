@@ -193,8 +193,8 @@ function refImports(): RefImports {
     Cvar_SetValue,
     Vid_GetModeInfo: VID_GetModeInfo,
     Vid_MenuInit(): void {
-      // vid_menu.c's VID_MenuInit builds the video menu's widget list. It is
-      // not ported (menu.ts's M_Menu_Video_f is still a PendingPort throw),
+      // vid_menu.c's VID_MenuInit builds the video menu's widget list; the
+      // port lives in src/platform/vid_menu.ts (menu.ts calls it directly),
       // and ref_soft never calls this entry point -- only ref_gl's
       // GLimp_Init path does. Left empty until the video menu lands.
     },

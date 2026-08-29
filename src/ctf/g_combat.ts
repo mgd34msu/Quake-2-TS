@@ -1,6 +1,5 @@
 // g_combat.c
 
-import { PendingPort } from "../qcommon/pending";
 import {
   AngleVectors,
   DotProduct,

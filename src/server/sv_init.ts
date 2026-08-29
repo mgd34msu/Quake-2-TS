@@ -3,7 +3,7 @@
 import { SysError, SvcOpsT, PORT_MASTER, UPDATE_BACKUP } from "../qcommon/qcommon";
 import { CM_LoadMap, CM_InlineModel, CM_NumInlineModels, CM_EntityString } from "../qcommon/cmodel";
 import { Cvar_Set, Cvar_FullSet, Cvar_VariableValue, Cvar_GetLatchedVars } from "../qcommon/cvar";
-import { Com_Printf, Com_DPrintf, Com_Error, Com_SetServerState, dedicated } from "../qcommon/common";
+import { CL_DropHook, SCR_BeginLoadingPlaqueHook, Com_Printf, Com_DPrintf, Com_Error, Com_SetServerState, dedicated } from "../qcommon/common";
 import { FS_FOpenFile, FS_FCloseFile } from "../qcommon/files";
 import { NET_Config, NET_StringToAdr } from "../platform/net_udp";
 import { Cbuf_CopyToDefer } from "../qcommon/cmd";
@@ -294,10 +294,9 @@ export async function SV_InitGame(): Promise<void> {
     // cause any connected clients to reconnect
     SV_Shutdown("Server restarted\n", true);
   } else {
-    // CL_Drop(); SCR_BeginLoadingPlaque(); -- omitted: client not yet
-    // ported (owning modules: src/client/cl_main.ts, src/client/scr_main.ts
-    // or equivalent). Matches the omission idiom qcommon/common.ts already
-    // uses for the same calls. See report.
+    // make sure the client is down
+    CL_DropHook();
+    SCR_BeginLoadingPlaqueHook();
   }
 
   // get any latched variable changes (maxclients, etc)
@@ -414,7 +413,7 @@ export async function SV_Map(attractloop: boolean, levelstring: string, loadgame
 
   const l = level.length;
   if (l > 4 && level.slice(l - 4) === ".cin") {
-    // SCR_BeginLoadingPlaque() -- omitted: client not yet ported
+    SCR_BeginLoadingPlaqueHook(); // for local system
     SV_BroadcastCommand("changing\n");
     SV_SpawnServer(level, spawnpoint, ServerStateT.ss_cinematic, attractloop, loadgame);
   } else if (l > 4 && level.slice(l - 4) === ".dm2") {
