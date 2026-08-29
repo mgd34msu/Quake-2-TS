@@ -33,6 +33,10 @@ Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configur
 - Fixed-size C arrays → plain `T[]` initialized to length with a fill, or `Float32Array`/`Uint8Array`/`Int32Array` when the C type is numeric and indexed heavily.
 - `sizebuf_t` → `SizeBuf` class over a `Uint8Array` + `DataView` in `src/qcommon/sizebuf.ts`; MSG_Write*/MSG_Read* stay byte-exact with the C wire format (little-endian).
 - Binary file formats (BSP `qfiles.h`, MD2, WAL, PCX, PAK) → parsed from `ArrayBuffer` with `DataView`, struct-by-struct, offsets matching the C layout.
+- `trace_t.ent` is `unknown` in `src/shared/q_shared.ts` (C forward-declares `struct edict_s` there). `src/game/game.ts` ports C `game.h`'s shared edict prefix as `interface Edict`; server code uses `Edict` throughout and game code recovers its full `EdictT` with the C idiom `g_edicts[ent.s.number]` (EDICT_NUM), never a cast. Game-facing traces are typed in `game.ts` as `interface GTraceT extends Omit<TraceT, "ent"> { ent: Edict | null }`.
+- C helpers that mutate a `char*` in place (`Com_sprintf(dest, size, ...)`, `COM_DefaultExtension`, `Info_RemoveKey`, `Info_SetValueForKey`) return the new string instead; JS strings are immutable. `Com_sprintf(fmt, ...args): string`.
+- When a helper's true source file differs from the mapping table above (e.g. `random()`/`crandom()` live in `g_local.h` but are mapped to `math.ts`), the brief's placement wins; report the mismatch, don't move it.
+- Pending stubs: only when a brief explicitly says so, a worker may create a sibling module whose functions `throw new PendingPort("name")` (`src/qcommon/pending.ts`). Stubs exist so units verify independently; the owning unit later replaces the whole file. The close phase deletes `pending.ts` and proves zero references remain.
 
 ## Globals and module structure
 
