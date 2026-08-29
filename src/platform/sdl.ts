@@ -115,6 +115,12 @@ const SDL_INIT_NOPARACHUTE = 0x00100000;
 const SDL_WINDOWPOS_CENTERED = 0x2fff0000;
 const SDL_WINDOW_SHOWN = 0x00000004;
 const SDL_WINDOW_FULLSCREEN = 0x00000001;
+// FULLSCREEN | 0x1000: borderless "desktop" fullscreen. The plain
+// FULLSCREEN flag asks for a video-mode change, which Wayland cannot do --
+// SDL's wayland backend then leaves the surface in a state Hyprland
+// eventually flags "not responding". Desktop fullscreen composites at the
+// native resolution and RenderSetLogicalSize scales the frame.
+const SDL_WINDOW_FULLSCREEN_DESKTOP = 0x00001001;
 
 const SDL_RENDERER_SOFTWARE = 0x00000001;
 const SDL_RENDERER_ACCELERATED = 0x00000002;
@@ -350,7 +356,7 @@ export function SDLVID_Init(width: number, height: number, fullscreen: boolean):
 
   SDLVID_Shutdown();
 
-  const flags = SDL_WINDOW_SHOWN | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
+  const flags = SDL_WINDOW_SHOWN | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   window = l.symbols.SDL_CreateWindow(cstr("Quake 2"), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
   if (!window) {
     Com_Printf("SDL: SDL_CreateWindow failed: %s\n", sdlError(l));
