@@ -25,11 +25,9 @@
 //  - ConsoleFunc drops the `extern void Key_ClearTyping(void);` call: that
 //    function isn't exported by keys_impl.ts yet (not in its declared
 //    surface) -- reported omission, not a TODO.
-//  - M_Menu_Video_f: vid_menu.c lives per-platform (linux/win32/irix), which
-//    PORTING.md maps to one consolidated `src/platform/vid.ts`. That module
-//    doesn't exist yet, so VID_MenuInit/VID_MenuDraw/VID_MenuKey have no
-//    home to import from; ported as a PendingPort throw, the project's
-//    sanctioned marker for "the owning unit hasn't landed yet".
+//  - M_Menu_Video_f: vid_menu.c lives per-platform (linux/win32/irix);
+//    VID_MenuInit/VID_MenuDraw/VID_MenuKey are ported in
+//    src/platform/vid_menu.ts and imported here.
 //  - PlayerConfig_ScanDirectories: the C walks Sys_FindFirst/FS_ListFiles
 //    with SFF_SUBDIR musthave flags neither of which exist in this port's
 //    files.ts (FS_ListFiles here takes no attribute filters, and
@@ -49,8 +47,8 @@
 //    is idempotent by name, so this returns the same CvarT object.
 //  - `in_joystick`/`win_noalttab` are likewise resolved locally via
 //    Cvar_Get since no sibling module exports them yet.
-import { PendingPort } from "../qcommon/pending";
 import { viddef } from "./vid";
+import { VID_MenuInit, VID_MenuDraw, VID_MenuKey } from "../platform/vid_menu";
 import { re, cl, cls } from "./client";
 import { KeydestT } from "./client";
 import { Sys_Milliseconds } from "../platform/sys";
@@ -1008,11 +1006,8 @@ VIDEO MENU
 =======================================================================
 */
 function M_Menu_Video_f(): void {
-  // vid_menu.c is per-platform (linux/win32/irix); PORTING.md maps all
-  // three to one consolidated src/platform/vid.ts, which doesn't exist yet
-  // -- VID_MenuInit/VID_MenuDraw/VID_MenuKey have no home to import from.
-  // Reported ruling: out of this unit's scope, not yet ported.
-  throw new PendingPort("VID_MenuInit");
+  VID_MenuInit();
+  M_PushMenu(VID_MenuDraw, VID_MenuKey);
 }
 
 /*

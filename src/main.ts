@@ -257,7 +257,9 @@ stdin setup and the `nostdout` cvar, both of which belong to
 src/platform/sys.ts's Sys_ConsoleInput/Sys_ConsoleOutput.
 */
 export async function main(): Promise<void> {
-  Qcommon_Init(process.argv.slice(1));
+  // Qcommon_Init is async (socket binds, file loads); entering the frame
+  // loop before it settles races half-initialized subsystems.
+  await Qcommon_Init(process.argv.slice(1));
 
   let oldtime = Sys_Milliseconds();
   for (;;) {
