@@ -128,7 +128,9 @@ function requireNoise(noise: EdictT | null): EdictT {
   gi.error("PlayerNoise: noise entity not initialized");
 }
 
-function P_ProjectSource(client: GClientT, point: Vec3, distance: Vec3, forward: Vec3, right: Vec3, result: Vec3): void {
+// static in C; exported here so it is directly testable (P_ProjectSource's
+// handedness math is part of this unit's test brief).
+export function P_ProjectSource(client: GClientT, point: Vec3, distance: Vec3, forward: Vec3, right: Vec3, result: Vec3): void {
   const _distance = vec3();
   VectorCopy(distance, _distance);
   if (client.pers.hand === LEFT_HANDED) _distance[1] *= -1;
@@ -911,7 +913,10 @@ MACHINEGUN / CHAINGUN
 ======================================================================
 */
 
-function Machinegun_Fire(ent: EdictT): void {
+// non-static in C but only called within this file; exported anyway for
+// direct testability (this unit's test brief covers Machinegun_Fire
+// specifically).
+export function Machinegun_Fire(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 

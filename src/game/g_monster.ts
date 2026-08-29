@@ -24,7 +24,7 @@ import {
   YAW,
 } from "../shared/q_shared";
 import { T_Damage } from "./g_combat";
-import { FoundTarget } from "./g_ai";
+import { FoundTarget, M_CheckAttack } from "./g_ai";
 import {
   AI_GOOD_GUY,
   AI_HOLD_FRAME,
@@ -61,7 +61,6 @@ import { FindItemByClassname } from "./g_items";
 import { Drop_Item } from "./g_items";
 import { G_Find, G_FreeEdict, G_PickTarget, G_UseTargets, KillBox, vectoyaw, vtos, type EdictStringKey } from "./g_utils";
 import { M_walkmove } from "./m_move";
-import { PendingPort } from "../qcommon/pending";
 
 // trace_t.ent recovery idiom (see g_phys.ts's traceEdict): sv_world.c
 // defaults an unset trace.ent to the world edict, never NULL, so a null
@@ -707,14 +706,3 @@ export function swimmonster_start(self: EdictT): void {
   monster_start(self);
 }
 
-// M_CheckAttack's true home is g_ai.c (declared in g_local.h, defined in
-// g_ai.c alongside ai_stand/ai_move/FoundTarget/etc, all still PendingPort
-// stubs there); the pending-stub inventory mislabeled it under g_monster.c
-// before this port. It stays here -- rather than moving into the out-of-scope
-// g_ai.ts -- only as the assignment target monster_start needs
-// (`self.monsterinfo.checkattack = M_CheckAttack`); it still throws
-// PendingPort until g_ai.c's real port lands. Reported as a stub-signature/
-// file-mapping deviation.
-export function M_CheckAttack(self: EdictT): boolean {
-  throw new PendingPort("g_ai.c:M_CheckAttack");
-}

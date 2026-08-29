@@ -66,6 +66,7 @@ import {
   SP_func_killbox,
   SP_func_plat,
   SP_func_rotating,
+  SP_func_timer,
   SP_func_train,
   SP_func_water,
   SP_trigger_elevator,
@@ -156,15 +157,6 @@ import { SP_monster_supertank } from "./m_supertank";
 import { SP_monster_boss2 } from "./m_boss2";
 import { SP_monster_boss3_stand } from "./m_boss3";
 import { SP_monster_jorg } from "./m_boss31";
-
-// g_func.c defines SP_func_timer (g_func.c:1795) but g_func.ts's stub does
-// not export it yet -- missing sibling stub, reported to the coordinator.
-// Scoped fallback gate per this worker's brief: a local PendingPort wrapper,
-// used only inside this file's spawns[] table, deleted once g_func.ts adds
-// the real export.
-function SP_func_timer(self: EdictT): void {
-  throw new PendingPort("g_func.c:SP_func_timer");
-}
 
 // gameCvars entries are `CvarT | null` until InitGame resolves them (see
 // g_main.ts's identical helper and comment). Mirrored locally here since

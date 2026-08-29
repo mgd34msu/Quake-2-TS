@@ -44,7 +44,7 @@ import { PendingPort } from "../qcommon/pending";
 // (m_player.h/p_view.c's frame table is a separate, not-yet-landed unit, and
 // this worker's SCOPE does not include creating a new m_player_frames.ts
 // sibling). Cmd_Wave_f needs exactly these ten, so they are declared locally
-// here with their g_ai... err, m_player.h values (verified against
+// here with their m_player.h values (verified against
 // quake-2-c/game/m_player.h). Follow-up: once that module lands, import
 // these from there instead and drop this block.
 const FRAME_flip01 = 72;

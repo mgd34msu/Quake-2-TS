@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Edict, GameExports, GameImports, GTraceT } from "../src/game/game";
 import { GAME_API_VERSION, SolidT, SVF_NOCLIENT } from "../src/game/game";
 import {
@@ -32,7 +32,6 @@ import {
   SetGameImports,
   SetGEdicts,
 } from "../src/game/g_local";
-import { PendingPort } from "../src/qcommon/pending";
 import { vec3 } from "../src/shared/math";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
 
@@ -431,14 +430,13 @@ describe("Pickup_Armor", () => {
 });
 
 describe("Use_Quad", () => {
-  test("really calls the pending g_cmds.ts ValidateSelectedItem sibling, then mocks it for the remaining tests", () => {
+  test("calls the real g_cmds.ts ValidateSelectedItem sibling and still decrements inventory first", () => {
     // Use_Quad calls g_cmds.ts's ValidateSelectedItem before touching
     // quad_framenum (C order: inventory-- then ValidateSelectedItem, then
-    // the timeout math + gi.sound). ValidateSelectedItem is still an
-    // unported PendingPort stub in g_cmds.ts (sibling module, out of this
-    // file's SCOPE) -- this first assertion proves Use_Quad really calls
-    // through to it (the PendingPort here is the pending sibling's throw
-    // propagating, exactly like g_utils.test.ts's KillBox/T_Damage case).
+    // the timeout math + gi.sound). g_cmds.c has since landed a real port
+    // (ValidateSelectedItem is no longer a PendingPort stub), so this now
+    // just proves Use_Quad calls through to it without throwing and still
+    // decrements the inventory count first.
     const rec = setupWorld();
     const ent = g_edicts[MAXCLIENTS + 1];
     const client = withClient(ent);
@@ -447,16 +445,9 @@ describe("Use_Quad", () => {
     if (quadItem === null) return;
     client.pers.inventory[ITEM_INDEX(quadItem)] = 1;
 
-    expect(() => Use_Quad(ent, quadItem)).toThrow(PendingPort);
-    // the inventory-- runs before the ValidateSelectedItem call it fails on
+    expect(() => Use_Quad(ent, quadItem)).not.toThrow();
     expect(client.pers.inventory[ITEM_INDEX(quadItem)]).toBe(0);
-    expect(rec.sound).toHaveLength(0); // never reached the sound call
-
-    // Mocked to a no-op so the remaining tests below can observe Use_Quad's
-    // own quad_framenum/sound logic, which runs after ValidateSelectedItem.
-    mock.module("../src/game/g_cmds", () => ({
-      ValidateSelectedItem() {},
-    }));
+    expect(rec.sound).toHaveLength(1);
   });
 
   test("pushes quad_framenum forward by the default 300-frame timeout and plays the pickup sound", () => {

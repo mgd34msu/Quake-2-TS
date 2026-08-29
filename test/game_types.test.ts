@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AI_SetSightClient } from "../src/game/g_ai";
-import { EdictT, game, GClientT, level } from "../src/game/g_local";
-import { PendingPort } from "../src/qcommon/pending";
+import { EdictT, game, GClientT, level, SetGEdicts } from "../src/game/g_local";
 
 describe("EdictT defaults", () => {
   test("constructs with C memset-equivalent defaults", () => {
@@ -77,17 +76,24 @@ describe("g_local.ts singletons", () => {
   });
 });
 
-describe("pending stubs", () => {
-  test("a stub throws PendingPort with its C-source name", () => {
-    expect(() => AI_SetSightClient()).toThrow(PendingPort);
-    try {
-      AI_SetSightClient();
-      throw new Error("expected AI_SetSightClient to throw");
-    } catch (err) {
-      if (!(err instanceof PendingPort)) {
-        throw err;
-      }
-      expect(err.message).toBe("not yet ported: g_ai.c:AI_SetSightClient");
-    }
+// g_ai.c has since landed a real port (AI_SetSightClient is no longer a
+// PendingPort stub); this now exercises its real behavior instead of the
+// placeholder throw. See test/g_ai.test.ts for the full AI_SetSightClient
+// coverage (notarget/dead-client skipping, cycling, etc).
+describe("AI_SetSightClient", () => {
+  test("leaves level.sight_client null when there are no eligible clients", () => {
+    game.clear();
+    game.maxclients = 2;
+    const edicts = [new EdictT(), new EdictT(), new EdictT()];
+    edicts.forEach((e, i) => {
+      e.s.number = i;
+    });
+    SetGEdicts(edicts);
+    level.clear();
+    level.sight_client = null;
+
+    AI_SetSightClient();
+
+    expect(level.sight_client).toBeNull();
   });
 });

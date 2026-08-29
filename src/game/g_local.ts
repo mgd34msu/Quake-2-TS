@@ -775,7 +775,10 @@ export class EdictT implements Edict {
   max_health = 0;
   gib_health = 0;
   deadflag = 0;
-  show_hostile = false;
+  // C declares `qboolean show_hostile` but g_ai.c stores a truncated
+  // level.time timestamp in it (int-backed enum absorbs the float); typed
+  // as the number it really is.
+  show_hostile = 0;
 
   powerarmor_time = 0;
 

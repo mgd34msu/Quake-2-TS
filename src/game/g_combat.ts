@@ -26,6 +26,7 @@ import {
   TempEventT,
 } from "../shared/q_shared";
 import { FoundTarget, visible } from "./g_ai";
+import { OnSameTeam } from "./g_cmds";
 import { SVF_MONSTER } from "./game";
 import { findradius } from "./g_utils";
 import {
@@ -57,19 +58,6 @@ import {
 } from "./g_local";
 import { ArmorIndex, FindItem, GetItemByIndex, ITEM_INDEX, PowerArmorType } from "./g_items";
 import { monster_death_use } from "./g_monster";
-
-// `OnSameTeam` is implemented in g_cmds.c (see ClientTeam there), but
-// g_local.h groups its prototype under its own "// g_combat.c" comment
-// block right alongside CanDamage/T_Damage/T_RadiusDamage, and it was
-// already scaffolded as a pending stub in this module before this port
-// landed. g_cmds.ts (this worker's SCOPE excludes it) has not ported
-// OnSameTeam yet, so it stays here as a pending stub rather than being
-// invented against an out-of-scope file. Reported as a deviation: the
-// worker that ports g_cmds.c should relocate this to g_cmds.ts and this
-// module should import it from there instead.
-export function OnSameTeam(ent1: EdictT, ent2: EdictT): boolean {
-  throw new PendingPort("g_cmds.c:OnSameTeam");
-}
 
 /*
 ============

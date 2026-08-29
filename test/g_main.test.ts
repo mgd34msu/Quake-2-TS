@@ -118,10 +118,11 @@ describe("GetGameAPI", () => {
 });
 
 describe("G_RunFrame", () => {
-  test("advances level.framenum/level.time against a fabricated non-inuse g_edicts array", () => {
+  test("advances level.framenum/level.time and completes a full frame now that g_ai.c has landed", () => {
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
     GetGameAPI(buildFakeImports(calls));
     resetGameCvars();
+    game.clear(); // maxclients=0, so AI_SetSightClient's client scan is a no-op
     level.clear();
 
     const edicts = [new EdictT(), new EdictT(), new EdictT()];
@@ -131,21 +132,15 @@ describe("G_RunFrame", () => {
 
     const beforeFrame = level.framenum;
 
-    // AI_SetSightClient (g_ai.c) is an unconditional PendingPort stub, so
-    // G_RunFrame cannot complete -- but framenum/time are advanced before
-    // that call runs, exactly as in the C source (both increments happen
-    // before AI_SetSightClient() is reached).
-    let threw: unknown;
-    try {
-      G_RunFrame();
-    } catch (err) {
-      threw = err;
-    }
+    // AI_SetSightClient (g_ai.c) used to be an unconditional PendingPort
+    // stub, blocking G_RunFrame before it reached the entity loop. Now that
+    // g_ai.c is a real port, G_RunFrame runs end-to-end over this fabricated
+    // (all non-inuse) world without throwing.
+    expect(() => G_RunFrame()).not.toThrow();
 
-    expect(threw).toBeInstanceOf(PendingPort);
-    expect((threw as PendingPort).message).toBe("not yet ported: g_ai.c:AI_SetSightClient");
     expect(level.framenum).toBe(beforeFrame + 1);
     expect(level.time).toBeCloseTo((beforeFrame + 1) * FRAMETIME);
+    expect(level.sight_client).toBeNull(); // no clients exist to pick (maxclients=0)
   });
 });
 

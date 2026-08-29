@@ -59,25 +59,14 @@ import { G_FreeEdict, G_PickTarget, G_ProjectSource, G_Spawn, vectoyaw, vtos } f
 import { M_ChangeYaw, M_MoveToGoal, M_walkmove } from "./m_move";
 import { PlayerTrail_PickFirst, PlayerTrail_PickNext } from "./p_trail";
 
-// g_local.ts types EdictT.show_hostile as `boolean` (matching the C header's
-// declared `qboolean show_hostile;`), but g_ai.c actually writes and reads
-// it as a truncated level.time timestamp (`self->show_hostile = level.time +
-// 1`, later compared `client->show_hostile < level.time`) -- a real quirk of
-// the original C: qboolean is an int-backed enum, so assigning a float to it
-// silently truncates. g_local.ts is out of this unit's SCOPE, so the boolean
-// field is kept set to `true` for structural parity wherever C writes it,
-// while the actual timestamp value lives in this module-local WeakMap.
-// Follow-up: retype EdictT.show_hostile as `number` in g_local.ts and drop
-// this map.
-const showHostileUntil = new WeakMap<EdictT, number>();
-
+// C's `qboolean show_hostile` really holds a truncated level.time timestamp
+// (int-backed enum absorbs the float assignment); EdictT types it as number.
 function setShowHostile(ent: EdictT, levelTime: number): void {
-  showHostileUntil.set(ent, Math.trunc(levelTime + 1));
-  ent.show_hostile = true;
+  ent.show_hostile = Math.trunc(levelTime + 1);
 }
 
 function getShowHostileUntil(ent: EdictT): number {
-  return showHostileUntil.get(ent) ?? 0;
+  return ent.show_hostile;
 }
 
 // trace_t.ent recovery idiom (see g_monster.ts's traceEdict / g_phys.ts's
