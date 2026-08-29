@@ -4,6 +4,7 @@ import { VectorCopy } from "../shared/math";
 import { Com_sprintf, type CvarT, DF_SAME_LEVEL, PRINT_HIGH, Q_stricmp, type UsercmdT } from "../shared/q_shared";
 import { PendingPort } from "../qcommon/pending";
 import { AI_SetSightClient } from "./g_ai";
+import { ClientCommand } from "./g_cmds";
 import { type Edict, GAME_API_VERSION, type GameExports, type GameImports, SVF_MONSTER } from "./game";
 import {
   type EdictT,
@@ -96,11 +97,6 @@ function ClientDisconnect(ent: Edict): void {
 }
 function ClientThink(ent: Edict, cmd: UsercmdT): void {
   throw new PendingPort("p_client.c:ClientThink");
-}
-
-// g_cmds.ts does not yet export ClientCommand (g_cmds.c:908).
-function ClientCommand(ent: Edict): void {
-  throw new PendingPort("g_cmds.c:ClientCommand");
 }
 
 /*

@@ -1,6 +1,5 @@
 // g_misc.c
 
-import { PendingPort } from "../qcommon/pending";
 import {
   AngleVectors,
   crandom,
@@ -68,6 +67,7 @@ import {
   MovetypeT,
   svc_temp_entity,
 } from "./g_local";
+import { func_train_find, train_use } from "./g_func";
 import { M_droptofloor } from "./g_monster";
 import { G_Find, G_FreeEdict, G_PickTarget, G_Spawn, G_UseTargets, KillBox, vectoangles, vectoyaw, vtos } from "./g_utils";
 import { M_walkmove } from "./m_move";
@@ -1110,20 +1110,6 @@ There must be a path for it to follow once it is activated.
 
 "speed"		How fast the Viper should fly
 */
-
-// `extern void train_use (edict_t *self, edict_t *other, edict_t *activator);`
-// `extern void func_train_find (edict_t *self);` -- both defined in g_func.c.
-// g_func.ts (a concurrent PendingPort stub, out of this unit's SCOPE) only
-// exports its SP_* spawn functions, not these internal func_train helpers,
-// so they are declared locally with the same throwing shape until g_func.c
-// is fully ported. Reported as a blocked path / missing sibling export.
-function train_use(_self: EdictT, _other: EdictT | null, _activator: EdictT | null): void {
-  throw new PendingPort("g_func.c:train_use");
-}
-
-function func_train_find(_self: EdictT): void {
-  throw new PendingPort("g_func.c:func_train_find");
-}
 
 function misc_viper_use(self: EdictT, other: EdictT | null, activator: EdictT | null): void {
   self.svflags &= ~SVF_NOCLIENT;
