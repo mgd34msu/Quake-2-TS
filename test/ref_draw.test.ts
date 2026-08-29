@@ -296,6 +296,24 @@ describe("Draw_Pic", () => {
     }
   });
 
+  test("truncates fractional coordinates like the C int parameters did", () => {
+    // C declares Draw_Pic(int x, int y, ...): callers doing integer division
+    // (e.g. M_Main_Draw's xoffset = (viddef.width - widest + 70) / 2) got
+    // truncation from the parameter type. In JS a fractional x reaches the
+    // typed-array blit and every write at a fractional index is silently
+    // dropped, which made the whole main menu invisible. The boundary must
+    // truncate.
+    files.set("pics/frac.pcx", buildPcxBytes(4, 4, (x, y) => y * 4 + x + 1));
+
+    Draw_Pic(2.5, 3.5, "frac");
+
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        expect(vid.buffer[(3 + y) * vid.rowbytes + (2 + x)]).toBe(y * 4 + x + 1);
+      }
+    }
+  });
+
   test("clips at the screen edge without writing out of bounds", () => {
     files.set("pics/edge.pcx", buildPcxBytes(8, 8, () => 77));
 

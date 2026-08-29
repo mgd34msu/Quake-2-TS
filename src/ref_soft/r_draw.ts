@@ -51,6 +51,12 @@ smoothly scrolled off.
 ================
 */
 export function Draw_Char(x: number, y: number, num: number): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
+  num = num | 0;
   num &= 255;
 
   if (num === 32 || num === 32 + 128) return;
@@ -161,6 +167,13 @@ Draw_StretchPic
 =============
 */
 export function Draw_StretchPic(x: number, y: number, w: number, h: number, name: string): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
+  w = w | 0;
+  h = h | 0;
   const pic = Draw_FindPic(name);
   if (!pic) {
     ri.Con_Printf(PRINT_ALL, `Can't find pic: ${name}\n`);
@@ -175,6 +188,13 @@ Draw_StretchRaw
 =============
 */
 export function Draw_StretchRaw(x: number, y: number, w: number, h: number, cols: number, rows: number, data: Uint8Array): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
+  w = w | 0;
+  h = h | 0;
   const pic = new ImageT();
   pic.pixels[0] = data;
   pic.width = cols;
@@ -188,6 +208,11 @@ Draw_Pic
 =============
 */
 export function Draw_Pic(x: number, y: number, name: string): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
   const pic = Draw_FindPic(name);
   if (!pic) {
     ri.Con_Printf(PRINT_ALL, `Can't find pic: ${name}\n`);
@@ -263,6 +288,13 @@ refresh window.
 =============
 */
 export function Draw_TileClear(x: number, y: number, w: number, h: number, name: string): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
+  w = w | 0;
+  h = h | 0;
   if (x < 0) {
     w += x;
     x = 0;
@@ -299,6 +331,13 @@ Fills a box of pixels with a single color
 =============
 */
 export function Draw_Fill(x: number, y: number, w: number, h: number, c: number): void {
+  // C declares these parameters int; JS callers can pass fractional
+  // values (typed-array writes at fractional indices are silently dropped),
+  // so truncate at the boundary exactly as the C parameter types did.
+  x = x | 0;
+  y = y | 0;
+  w = w | 0;
+  h = h | 0;
   if (x + w > vid.width) w = vid.width - x;
   if (y + h > vid.height) h = vid.height - y;
   if (x < 0) {
