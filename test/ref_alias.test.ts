@@ -13,6 +13,11 @@ hand-computable math or self-contained algorithms:
   triangle into d_viewbuffer, hitting the exact expected pixel positions
   (a triangular-number pixel count for a right triangle with two
   axis-aligned legs of length 2: 2*3/2 = 3 pixels).
+- R_AliasClipTriangle (r_aclip.ts) into R_DrawTriangle (r_polyse.ts): a
+  triangle with one vertex past the left plane, whose clip intersections
+  land on interior fractional v values -- the configuration that runs
+  R_PolysetScanLeftEdge_C past the end of the DPS_MAXSPANS pool if the
+  clip results are not truncated to finalvert_t's int fields.
 - R_AliasSetUpLerpData (r_alias.ts): frame-vertex lerp coefficients at
   backlerp 0.5, hand-computed.
 
@@ -23,8 +28,8 @@ run first.
 
 import { describe, test, expect } from "bun:test";
 import { EntityT } from "../src/client/ref";
-import { ALIAS_LEFT_CLIP, FinalvertT, r_refdef } from "../src/ref_soft/r_local";
-import { R_AliasClip, R_Alias_clip_left } from "../src/ref_soft/r_aclip";
+import { ALIAS_LEFT_CLIP, FinalvertT, MAXHEIGHT, r_refdef } from "../src/ref_soft/r_local";
+import { R_AliasClip, R_AliasClipTriangle, R_Alias_clip_left } from "../src/ref_soft/r_aclip";
 import { R_AliasSetUpLerpData, r_lerp_backv, r_lerp_frontv, r_lerp_move } from "../src/ref_soft/r_alias";
 import {
   R_DrawTriangle,
@@ -75,22 +80,24 @@ describe("R_AliasClip / R_Alias_clip_left", () => {
     expect(out[0].v).toBeCloseTo(0);
     expect(out[0].s).toBeCloseTo(100);
 
-    // out[1] = clip(v0, v1): edge from (20,0) to (0,10) crossing u=10 at scale 0.5
-    expect(out[1].u).toBeCloseTo(10.5);
-    expect(out[1].v).toBeCloseTo(5.5);
-    expect(out[1].s).toBeCloseTo(50.5);
-    expect(out[1].t).toBeCloseTo(100.5);
-    expect(out[1].l).toBeCloseTo(25.5);
-    expect(out[1].zi).toBeCloseTo(500.5);
+    // out[1] = clip(v0, v1): edge from (20,0) to (0,10) crossing u=10 at scale
+    // 0.5, so the raw `expr + 0.5` values are 10.5/5.5/50.5/100.5/25.5/500.5
+    // and land in finalvert_t's int fields truncated toward zero.
+    expect(out[1].u).toBe(10);
+    expect(out[1].v).toBe(5);
+    expect(out[1].s).toBe(50);
+    expect(out[1].t).toBe(100);
+    expect(out[1].l).toBe(25);
+    expect(out[1].zi).toBe(500);
     expect(out[1].flags).toBe(0);
 
     // out[2] = clip(v1, v2): edge from (0,10) to (40,20) crossing u=10 at scale 0.75
-    expect(out[2].u).toBeCloseTo(10.5);
-    expect(out[2].v).toBeCloseTo(13);
-    expect(out[2].s).toBeCloseTo(100.5);
-    expect(out[2].t).toBeCloseTo(200.5);
-    expect(out[2].l).toBeCloseTo(50.5);
-    expect(out[2].zi).toBeCloseTo(1000.5);
+    expect(out[2].u).toBe(10);
+    expect(out[2].v).toBe(13);
+    expect(out[2].s).toBe(100);
+    expect(out[2].t).toBe(200);
+    expect(out[2].l).toBe(50);
+    expect(out[2].zi).toBe(1000);
     expect(out[2].flags).toBe(0);
 
     // out[3] = copy of v2 (untouched, third vertex was already inside)
@@ -180,6 +187,75 @@ describe("R_DrawTriangle", () => {
     expect(view[0]).toBe(200);
     expect(view[1]).toBe(200);
     expect(view[8]).toBe(200);
+  });
+});
+
+describe("R_AliasClipTriangle -> R_DrawTriangle", () => {
+  test("a left-clipped triangle rasterizes within the a_spans pool", () => {
+    // finalvert_t's u/v/s/t/l/zi are `int` in r_local.h, so every clip
+    // interpolation truncates. R_RasterizeAliasPolySmooth derives its edge
+    // heights as differences of v, and R_PolysetScanLeftEdge_C ends on
+    // `while (--height)`: a v that kept a fractional part never reaches 0, so
+    // the scan walks off the end of the DPS_MAXSPANS pool. A left-plane
+    // crossing interpolates v to an arbitrary interior value (here 173.5 and
+    // 191.333...), so unlike a top/bottom crossing it is not rounded off
+    // again by R_AliasClipTriangle's clamp to the alias vrect.
+    const DPS_MAXSPANS = MAXHEIGHT + 1;
+    const SPAN_END_MARKER = -999999;
+
+    const screenwidth = 320;
+    const screenheight = 240;
+    const view = new Uint8Array(screenwidth * screenheight);
+    const zbuf = new Int16Array(screenwidth * screenheight);
+    D_SetViewBuffer(view, screenwidth);
+    D_SetZBuffer(zbuf, screenwidth);
+
+    const colormap = new Uint8Array(256 * 64);
+    for (let i = 0; i < colormap.length; i++) colormap[i] = i & 0xff;
+    vid.colormap = colormap;
+
+    r_affinetridesc.pskin = new Uint8Array(64 * 64).fill(7);
+    r_affinetridesc.skinwidth = 64;
+    r_affinetridesc.skinheight = 64;
+
+    r_newrefdef.rdflags = 0;
+
+    r_refdef.aliasvrect.x = 10;
+    r_refdef.aliasvrect.y = 0;
+    r_refdef.aliasvrectright = 319;
+    r_refdef.aliasvrectbottom = 239;
+
+    let maxSpanIndex = -1;
+    R_SetDrawSpansFn((spans, start) => {
+      let i = start;
+      while (i < DPS_MAXSPANS && spans[i].count !== SPAN_END_MARKER) i++;
+      if (i > maxSpanIndex) maxSpanIndex = i;
+      R_PolysetDrawSpans8_Opaque(spans, start);
+    });
+
+    // two vertices inside, one past the left plane at u=10
+    const a = makeFinalvert(100, 20, 2 << 16, 1 << 16, 1000, 500000, 0);
+    const c = makeFinalvert(120, 200, 1 << 16, 2 << 16, 600, 400000, 0);
+    const b = makeFinalvert(0, 190, 0, 0, 200, 300000, ALIAS_LEFT_CLIP);
+
+    expect(() => {
+      R_AliasClipTriangle(a, c, b);
+    }).not.toThrow();
+
+    // clipping yields the quad (10,173) (100,20) (120,200) (10,191), fanned
+    // into two triangles; the taller one spans 180 rows, well inside the
+    // 1201-entry pool.
+    for (const p of [r_p0, r_p1, r_p2]) {
+      for (const coord of p) expect(Number.isInteger(coord)).toBe(true);
+    }
+    expect(r_p0[1]).toBe(173);
+    expect(r_p1[1]).toBe(200);
+    expect(r_p2[1]).toBe(191);
+    expect(maxSpanIndex).toBe(180);
+    expect(maxSpanIndex).toBeLessThan(DPS_MAXSPANS);
+
+    // the span drawer actually painted the triangles' interior
+    expect(view.some((px) => px !== 0)).toBe(true);
   });
 });
 

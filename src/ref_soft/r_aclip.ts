@@ -57,9 +57,9 @@ function R_Alias_clip_z(pfv0: FinalvertT, pfv1: FinalvertT, out: FinalvertT): vo
   out.xyz[1] = pfv0.xyz[1] + (pfv1.xyz[1] - pfv0.xyz[1]) * scale;
   out.xyz[2] = ALIAS_Z_CLIP_PLANE;
 
-  out.s = pfv0.s + (pfv1.s - pfv0.s) * scale;
-  out.t = pfv0.t + (pfv1.t - pfv0.t) * scale;
-  out.l = pfv0.l + (pfv1.l - pfv0.l) * scale;
+  out.s = (pfv0.s + (pfv1.s - pfv0.s) * scale) | 0;
+  out.t = (pfv0.t + (pfv1.t - pfv0.t) * scale) | 0;
+  out.l = (pfv0.l + (pfv1.l - pfv0.l) * scale) | 0;
 
   R_AliasProjectAndClipTestFinalVert(out);
 }
@@ -74,20 +74,20 @@ export function R_Alias_clip_left(pfv0: FinalvertT, pfv1: FinalvertT, out: Final
 
   if (pfv0.v >= pfv1.v) {
     scale = (r_refdef.aliasvrect.x - pfv0.u) / (pfv1.u - pfv0.u);
-    out.u = pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5;
-    out.v = pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5;
-    out.s = pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5;
-    out.t = pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5;
-    out.l = pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5;
-    out.zi = pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5;
+    out.u = (pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5) | 0;
+    out.v = (pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5) | 0;
+    out.s = (pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5) | 0;
+    out.t = (pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5) | 0;
+    out.l = (pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5) | 0;
+    out.zi = (pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5) | 0;
   } else {
     scale = (r_refdef.aliasvrect.x - pfv1.u) / (pfv0.u - pfv1.u);
-    out.u = pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5;
-    out.v = pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5;
-    out.s = pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5;
-    out.t = pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5;
-    out.l = pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5;
-    out.zi = pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5;
+    out.u = (pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5) | 0;
+    out.v = (pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5) | 0;
+    out.s = (pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5) | 0;
+    out.t = (pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5) | 0;
+    out.l = (pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5) | 0;
+    out.zi = (pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5) | 0;
   }
 }
 
@@ -96,20 +96,20 @@ function R_Alias_clip_right(pfv0: FinalvertT, pfv1: FinalvertT, out: FinalvertT)
 
   if (pfv0.v >= pfv1.v) {
     scale = (r_refdef.aliasvrectright - pfv0.u) / (pfv1.u - pfv0.u);
-    out.u = pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5;
-    out.v = pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5;
-    out.s = pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5;
-    out.t = pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5;
-    out.l = pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5;
-    out.zi = pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5;
+    out.u = (pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5) | 0;
+    out.v = (pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5) | 0;
+    out.s = (pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5) | 0;
+    out.t = (pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5) | 0;
+    out.l = (pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5) | 0;
+    out.zi = (pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5) | 0;
   } else {
     scale = (r_refdef.aliasvrectright - pfv1.u) / (pfv0.u - pfv1.u);
-    out.u = pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5;
-    out.v = pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5;
-    out.s = pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5;
-    out.t = pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5;
-    out.l = pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5;
-    out.zi = pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5;
+    out.u = (pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5) | 0;
+    out.v = (pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5) | 0;
+    out.s = (pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5) | 0;
+    out.t = (pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5) | 0;
+    out.l = (pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5) | 0;
+    out.zi = (pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5) | 0;
   }
 }
 
@@ -118,20 +118,20 @@ function R_Alias_clip_top(pfv0: FinalvertT, pfv1: FinalvertT, out: FinalvertT): 
 
   if (pfv0.v >= pfv1.v) {
     scale = (r_refdef.aliasvrect.y - pfv0.v) / (pfv1.v - pfv0.v);
-    out.u = pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5;
-    out.v = pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5;
-    out.s = pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5;
-    out.t = pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5;
-    out.l = pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5;
-    out.zi = pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5;
+    out.u = (pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5) | 0;
+    out.v = (pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5) | 0;
+    out.s = (pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5) | 0;
+    out.t = (pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5) | 0;
+    out.l = (pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5) | 0;
+    out.zi = (pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5) | 0;
   } else {
     scale = (r_refdef.aliasvrect.y - pfv1.v) / (pfv0.v - pfv1.v);
-    out.u = pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5;
-    out.v = pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5;
-    out.s = pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5;
-    out.t = pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5;
-    out.l = pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5;
-    out.zi = pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5;
+    out.u = (pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5) | 0;
+    out.v = (pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5) | 0;
+    out.s = (pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5) | 0;
+    out.t = (pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5) | 0;
+    out.l = (pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5) | 0;
+    out.zi = (pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5) | 0;
   }
 }
 
@@ -140,20 +140,20 @@ function R_Alias_clip_bottom(pfv0: FinalvertT, pfv1: FinalvertT, out: FinalvertT
 
   if (pfv0.v >= pfv1.v) {
     scale = (r_refdef.aliasvrectbottom - pfv0.v) / (pfv1.v - pfv0.v);
-    out.u = pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5;
-    out.v = pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5;
-    out.s = pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5;
-    out.t = pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5;
-    out.l = pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5;
-    out.zi = pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5;
+    out.u = (pfv0.u + (pfv1.u - pfv0.u) * scale + 0.5) | 0;
+    out.v = (pfv0.v + (pfv1.v - pfv0.v) * scale + 0.5) | 0;
+    out.s = (pfv0.s + (pfv1.s - pfv0.s) * scale + 0.5) | 0;
+    out.t = (pfv0.t + (pfv1.t - pfv0.t) * scale + 0.5) | 0;
+    out.l = (pfv0.l + (pfv1.l - pfv0.l) * scale + 0.5) | 0;
+    out.zi = (pfv0.zi + (pfv1.zi - pfv0.zi) * scale + 0.5) | 0;
   } else {
     scale = (r_refdef.aliasvrectbottom - pfv1.v) / (pfv0.v - pfv1.v);
-    out.u = pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5;
-    out.v = pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5;
-    out.s = pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5;
-    out.t = pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5;
-    out.l = pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5;
-    out.zi = pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5;
+    out.u = (pfv1.u + (pfv0.u - pfv1.u) * scale + 0.5) | 0;
+    out.v = (pfv1.v + (pfv0.v - pfv1.v) * scale + 0.5) | 0;
+    out.s = (pfv1.s + (pfv0.s - pfv1.s) * scale + 0.5) | 0;
+    out.t = (pfv1.t + (pfv0.t - pfv1.t) * scale + 0.5) | 0;
+    out.l = (pfv1.l + (pfv0.l - pfv1.l) * scale + 0.5) | 0;
+    out.zi = (pfv1.zi + (pfv0.zi - pfv1.zi) * scale + 0.5) | 0;
   }
 }
 

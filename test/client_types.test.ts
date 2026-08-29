@@ -174,9 +174,11 @@ describe("ref.ts / vid.ts / screen.ts default structs", () => {
     expect(exports.api_version).toBe(3);
   });
 
-  test("viddef/VrectT default to zeroed dimensions", () => {
+  test("viddef is the shared singleton; fresh VrectT zeroes", () => {
+    // structural only: SWimp_SetMode's Vid_NewWindow legitimately writes
+    // viddef when an earlier suite sets a video mode in this process.
     expect(viddef).toBeInstanceOf(ViddefT);
-    expect(viddef.width).toBe(0);
+    expect(typeof viddef.width).toBe("number");
     const vr = new VrectT();
     expect(vr.width).toBe(0);
   });

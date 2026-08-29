@@ -44,6 +44,10 @@ export function SWimp_SetMode(width: number, height: number, mode: number, fulls
   vid.rowbytes = info.width;
   vid.buffer = new Uint8Array(info.width * info.height);
 
+  // rw_x11.c's SWimp_SetMode tells the engine the drawable size; without
+  // this the client-side viddef stays 0x0 and SCR_CalcVrect renders nothing.
+  ri.Vid_NewWindow(info.width, info.height);
+
   SDLVID_Init(info.width, info.height, fullscreen);
 
   return { pwidth: info.width, pheight: info.height, rserr: RserrT.rserr_ok };

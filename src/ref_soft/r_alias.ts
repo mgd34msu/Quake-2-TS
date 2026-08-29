@@ -456,10 +456,10 @@ export function R_AliasProjectAndClipTestFinalVert(fv: FinalvertT): void {
   const z = fv.xyz[2];
   const zi = 1.0 / z;
 
-  fv.zi = zi * s_ziscale;
+  fv.zi = (zi * s_ziscale) | 0;
 
-  fv.u = x * l_aliasxscale * zi + l_aliasxcenter;
-  fv.v = y * l_aliasyscale * zi + l_aliasycenter;
+  fv.u = (x * l_aliasxscale * zi + l_aliasxcenter) | 0;
+  fv.v = (y * l_aliasyscale * zi + l_aliasycenter) | 0;
 
   if (fv.u < r_refdef.aliasvrect.x) fv.flags |= ALIAS_LEFT_CLIP;
   if (fv.v < r_refdef.aliasvrect.y) fv.flags |= ALIAS_TOP_CLIP;
