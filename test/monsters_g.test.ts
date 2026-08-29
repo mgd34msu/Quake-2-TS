@@ -116,6 +116,7 @@ function setupWorld(): void {
   globals.edicts = edicts;
 
   // Self-sufficient per rule 13: never rely on another test file's cvar state.
+  gameCvars.maxclients = fakeCvar(1);
   gameCvars.deathmatch = fakeCvar(0);
   gameCvars.skill = fakeCvar(1);
   gameCvars.coop = fakeCvar(0);
@@ -191,10 +192,10 @@ describe("monster_jorg", () => {
     // monster_think call, landing on that frame on the 49th call.
     for (let i = 0; i < 49; i++) monster_think(self);
 
-    // MakronToss (m_boss32.ts) calls G_Spawn(), which -- with nothing else
-    // having claimed a slot in this fresh world -- lands on g_edicts[1]
-    // (maxclients(0 via unset gameCvars.maxclients) + 1).
-    const tossed = g_edicts[1];
+    // MakronToss (m_boss32.ts) calls G_Spawn(), which scans from
+    // maxclients+1 upward; with maxclients pinned to 1 the first free slot
+    // is g_edicts[2].
+    const tossed = g_edicts[2];
     expect(tossed.inuse).toBe(true);
     expect(tossed.target).toBe("makron_wakeup");
     expect(tossed.think).not.toBeNull();
@@ -244,10 +245,9 @@ describe("monster_makron", () => {
 
     MakronToss(jorg);
 
-    // G_Spawn scans from maxclients+1 upward for a free slot; with nothing
-    // else claimed in this fresh world it lands on g_edicts[1], independent
-    // of jorg's own (unrelated) slot index.
-    const tossed = g_edicts[1];
+    // G_Spawn scans from maxclients+1 upward; with maxclients pinned to 1
+    // the first free slot is g_edicts[2], independent of jorg's own slot.
+    const tossed = g_edicts[2];
     expect(tossed.inuse).toBe(true);
     expect(tossed.target).toBe("player_start1");
     expect(tossed.think).not.toBeNull();

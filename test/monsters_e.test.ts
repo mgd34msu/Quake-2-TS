@@ -119,6 +119,7 @@ function setupWorld(traceFn?: TraceFn): void {
 
   globals.num_edicts = MAXENTITIES;
 
+  gameCvars.maxclients = fakeCvar(1);
   gameCvars.deathmatch = fakeCvar(0);
   gameCvars.skill = fakeCvar(1);
 
