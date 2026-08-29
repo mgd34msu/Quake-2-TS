@@ -27,6 +27,7 @@ guards it is kept.
 */
 
 import { PRINT_ALL, Com_sprintf } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 import { ri, glCvars, vid, gl_config, gl_filter_min, gl_filter_max, d_8to24table, ImagetypeT, SetParticleTexture, SetNoTexture } from "./gl_local";
 import {
   qgl,
@@ -72,16 +73,20 @@ const GL_DISTANCE_ATTENUATION_EXT = 0x8129;
 R_InitParticleTexture
 ==================
 */
-const dottexture: readonly (readonly number[])[] = [
-  [0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 1, 1, 0, 0, 0, 0],
-  [0, 1, 1, 1, 1, 0, 0, 0],
-  [0, 1, 1, 1, 1, 0, 0, 0],
-  [0, 0, 1, 1, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0],
-];
+const dottexture: readonly (readonly number[])[] = fixedLength(
+  "dottexture",
+  8,
+  [
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 1, 1, 0, 0, 0, 0],
+    [0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 1, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0],
+  ],
+).map((row) => fixedLength("dottexture row", 8, row));
 
 export function R_InitParticleTexture(): void {
   //

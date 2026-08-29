@@ -88,10 +88,11 @@ function mframe(
   return f;
 }
 
-function mmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: MmoveT["endfunc"] = null): MmoveT {
+function mmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: MmoveT["endfunc"] = null, allowFrameCountMismatch = false): MmoveT {
   const m = new MmoveT();
   m.firstframe = firstframe;
   m.lastframe = lastframe;
+  m.allowFrameCountMismatch = allowFrameCountMismatch;
   m.frame = frame;
   m.endfunc = endfunc;
   return m;
@@ -153,7 +154,10 @@ function floater_stand(self: EdictT): void {
 // Defined but never wired to a monsterinfo hook in the original C either --
 // dead code kept for fidelity.
 const floater_frames_activate: MframeT[] = Array.from({ length: 30 }, () => mframe(ai_move, 0));
-const floater_move_activate = mmove(FRAME_actvat01, FRAME_actvat31, floater_frames_activate, null);
+// C bug, not a porting error: m_float.c's floater_frames_activate[] has 30
+// rows but FRAME_actvat01(0)..FRAME_actvat31(30) spans 31 (game/m_float.c:205-238).
+// Preserved byte-for-byte; already dead code in the original per the comment above.
+const floater_move_activate = mmove(FRAME_actvat01, FRAME_actvat31, floater_frames_activate, null, true);
 
 const floater_frames_attack1: MframeT[] = [
   mframe(ai_charge, 0), // Blaster attack

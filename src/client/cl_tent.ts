@@ -1,5 +1,6 @@
 // cl_tent.c -- client side temporary entities
 
+import { fixedLength } from "../shared/fixed";
 import {
   type Vec3,
   vec3,
@@ -188,7 +189,7 @@ export let cl_sfx_grenexp: SfxT | null = null;
 export let cl_sfx_watrexp: SfxT | null = null;
 // RAFAEL
 export let cl_sfx_plasexp: SfxT | null = null;
-export const cl_sfx_footsteps: (SfxT | null)[] = [null, null, null, null];
+export const cl_sfx_footsteps: (SfxT | null)[] = fixedLength("cl_sfx_footsteps", 4, [null, null, null, null]);
 
 export let cl_mod_explode: ModelS | null = null;
 export let cl_mod_smoke: ModelS | null = null;
@@ -760,7 +761,7 @@ function CL_ParseNuke(): void {
 CL_ParseTEnt
 =================
 */
-const splash_color = [0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8];
+const splash_color = fixedLength("splash_color", 7, [0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8]);
 
 export function CL_ParseTEnt(): void {
   const pos = vec3();

@@ -16,6 +16,7 @@ import type { SizeBuf } from "../qcommon/sizebuf";
 import { Com_Printf, Com_Error } from "../qcommon/common";
 import { Cvar_Get } from "../qcommon/cvar";
 import { Com_sprintf, CVAR_NOSET } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 
 type UdpSocket = Bun.udp.Socket<"buffer">;
 
@@ -130,7 +131,12 @@ export function NET_IsLocalAddress(adr: NetadrT): boolean {
 const MAX_LOOPBACK = 4;
 
 class LoopbackT {
-  msgs: Uint8Array[] = [new Uint8Array(0), new Uint8Array(0), new Uint8Array(0), new Uint8Array(0)];
+  msgs: Uint8Array[] = fixedLength("LoopbackT.msgs", MAX_LOOPBACK, [
+    new Uint8Array(0),
+    new Uint8Array(0),
+    new Uint8Array(0),
+    new Uint8Array(0),
+  ]);
   get = 0;
   send = 0;
 }

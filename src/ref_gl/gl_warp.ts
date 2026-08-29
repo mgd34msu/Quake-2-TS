@@ -56,6 +56,7 @@ import { GlpolyT, VERTEXSIZE, SIDE_FRONT, SIDE_BACK, SIDE_ON, type MsurfaceT } f
 import { r_origin, r_newrefdef, ri, glCvars, r_notexture, currentmodel, ImagetypeT, type ImageT } from "./gl_local";
 import { GL_Bind, GL_FindImage, qgl } from "./gl_image";
 export { qgl, SetQGL } from "./gl_image";
+import { fixedLength } from "../shared/fixed";
 
 // standard OpenGL 1.1 primitive-mode enum values (`<GL/gl.h>`); not defined
 // anywhere else in this port yet (see header comment's QGL/enum note).
@@ -68,7 +69,7 @@ const SUBDIVIDE_SIZE = 64;
 export let skyname = "";
 export let skyrotate = 0;
 export const skyaxis: Vec3 = vec3();
-export const sky_images: (ImageT | null)[] = [null, null, null, null, null, null];
+export const sky_images: (ImageT | null)[] = fixedLength("sky_images", 6, [null, null, null, null, null, null]);
 
 // gl_warp.c's own file-scope global, set at the top of GL_SubdivideSurface
 // and read by SubdividePolygon's recursive base case.
@@ -277,41 +278,51 @@ export function EmitWaterPolys(fa: MsurfaceT): void {
 
 //===================================================================
 
-const skyclip: readonly Vec3[] = [vec3(1, 1, 0), vec3(1, -1, 0), vec3(0, -1, 1), vec3(0, 1, 1), vec3(1, 0, 1), vec3(-1, 0, 1)];
+const skyclip: readonly Vec3[] = fixedLength("skyclip", 6, [vec3(1, 1, 0), vec3(1, -1, 0), vec3(0, -1, 1), vec3(0, 1, 1), vec3(1, 0, 1), vec3(-1, 0, 1)]);
 let c_sky = 0;
 
 // 1 = s, 2 = t, 3 = 2048
-const st_to_vec: readonly (readonly number[])[] = [
-  [3, -1, 2],
-  [-3, 1, 2],
+const st_to_vec: readonly (readonly number[])[] = fixedLength(
+  "st_to_vec",
+  6,
+  [
+    [3, -1, 2],
+    [-3, 1, 2],
 
-  [1, 3, 2],
-  [-1, -3, 2],
+    [1, 3, 2],
+    [-1, -3, 2],
 
-  [-2, -1, 3], // 0 degrees yaw, look straight up
-  [2, -1, -3], // look straight down
-];
+    [-2, -1, 3], // 0 degrees yaw, look straight up
+    [2, -1, -3], // look straight down
+  ],
+).map((row) => fixedLength("st_to_vec row", 3, row));
 
 // s = [0]/[2], t = [1]/[2]
-const vec_to_st: readonly (readonly number[])[] = [
-  [-2, 3, 1],
-  [2, 3, -1],
+const vec_to_st: readonly (readonly number[])[] = fixedLength(
+  "vec_to_st",
+  6,
+  [
+    [-2, 3, 1],
+    [2, 3, -1],
 
-  [1, 3, 2],
-  [-1, 3, -2],
+    [1, 3, 2],
+    [-1, 3, -2],
 
-  [-2, -1, 3],
-  [-2, 1, -3],
-];
+    [-2, -1, 3],
+    [-2, 1, -3],
+  ],
+).map((row) => fixedLength("vec_to_st row", 3, row));
 
-export const skymins: [number[], number[]] = [
-  [9999, 9999, 9999, 9999, 9999, 9999],
-  [9999, 9999, 9999, 9999, 9999, 9999],
+const skyminsRows: [number[], number[]] = [
+  fixedLength("skymins row", 6, [9999, 9999, 9999, 9999, 9999, 9999]),
+  fixedLength("skymins row", 6, [9999, 9999, 9999, 9999, 9999, 9999]),
 ];
-export const skymaxs: [number[], number[]] = [
-  [-9999, -9999, -9999, -9999, -9999, -9999],
-  [-9999, -9999, -9999, -9999, -9999, -9999],
+export const skymins: [number[], number[]] = fixedLength("skymins", 2, skyminsRows);
+const skymaxsRows: [number[], number[]] = [
+  fixedLength("skymaxs row", 6, [-9999, -9999, -9999, -9999, -9999, -9999]),
+  fixedLength("skymaxs row", 6, [-9999, -9999, -9999, -9999, -9999, -9999]),
 ];
+export const skymaxs: [number[], number[]] = fixedLength("skymaxs", 2, skymaxsRows);
 let sky_min = 0;
 let sky_max = 0;
 
@@ -487,7 +498,7 @@ export function MakeSkyVec(s: number, t: number, axis: number): void {
 R_DrawSkyBox
 ==============
 */
-const skytexorder: readonly number[] = [0, 2, 1, 3, 4, 5];
+const skytexorder: readonly number[] = fixedLength("skytexorder", 6, [0, 2, 1, 3, 4, 5]);
 
 export function R_DrawSkyBox(): void {
   if (skyrotate) {
@@ -537,7 +548,7 @@ R_SetSky
 ============
 */
 // 3dstudio environment map names
-const suf: readonly string[] = ["rt", "bk", "lf", "ft", "up", "dn"];
+const suf: readonly string[] = fixedLength("suf", 6, ["rt", "bk", "lf", "ft", "up", "dn"]);
 
 export function R_SetSky(name: string, rotate: number, axis: Vec3): void {
   skyname = name.slice(0, MAX_QPATH - 1);

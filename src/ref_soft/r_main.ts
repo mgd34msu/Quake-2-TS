@@ -78,6 +78,7 @@ import {
   vec3_origin,
 } from "../shared/math";
 import { CONTENTS_SOLID, CVAR_ARCHIVE, CVAR_USERINFO, Com_sprintf, ERR_FATAL, PRINT_ALL, RDF_NOWORLDMODEL, RF_BEAM, RF_TRANSLUCENT, type CvarT } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 import type { RefExports, RefImports, EntityT, RefdefT } from "../client/ref";
 import { API_VERSION } from "../client/ref";
 import {
@@ -1038,8 +1039,8 @@ R_SetSky
 ============
 */
 // 3dstudio environment map names
-const suf = ["rt", "bk", "lf", "ft", "up", "dn"];
-const r_skysideimage = [5, 2, 4, 1, 0, 3];
+const suf = fixedLength("suf", 6, ["rt", "bk", "lf", "ft", "up", "dn"]);
+const r_skysideimage = fixedLength("r_skysideimage", 6, [5, 2, 4, 1, 0, 3]);
 
 export function R_SetSky(name: string, rotate: number, axis: Vec3): void {
   skyname = name;

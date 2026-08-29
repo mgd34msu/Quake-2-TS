@@ -24,6 +24,7 @@ import {
   ROLL,
   YAW,
 } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 import { T_Damage } from "./g_combat";
 import { type Edict, SolidT, SVF_MONSTER } from "./game";
 import {
@@ -276,7 +277,7 @@ for making temporary vectors for function calls
 */
 // static locals become module-scope state -- see PORTING.md ("Never return
 // fresh arrays on hot paths"); this mirrors the C rotating buffer exactly.
-const tvVecs: Vec3[] = [vec3(), vec3(), vec3(), vec3(), vec3(), vec3(), vec3(), vec3()];
+const tvVecs: Vec3[] = fixedLength("tv vecs", 8, [vec3(), vec3(), vec3(), vec3(), vec3(), vec3(), vec3(), vec3()]);
 let tvIndex = 0;
 
 export function tv(x: number, y: number, z: number): Vec3 {

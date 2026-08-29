@@ -56,6 +56,7 @@ them.
 */
 
 import { ERR_FATAL, PRINT_ALL } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 import { SURFCACHE_SIZE_AT_320X240, SurfcacheT, currententity, r_drawsurf, r_framecount, r_newrefdef, rCvars, ri, vid } from "./r_local";
 import { R_BuildLightMap, blocklights } from "./r_light";
 import type { ImageT, MsurfaceT, MtexinfoT } from "./r_model";
@@ -122,7 +123,7 @@ let r_numvblocks = 0;
 let r_source: Uint8Array | null = null;
 let r_sourcemax = 0; // index bound into r_source
 
-const surfmiptable: (() => void)[] = [R_DrawSurfaceBlock8_mip0, R_DrawSurfaceBlock8_mip1, R_DrawSurfaceBlock8_mip2, R_DrawSurfaceBlock8_mip3];
+const surfmiptable: (() => void)[] = fixedLength("surfmiptable", 4, [R_DrawSurfaceBlock8_mip0, R_DrawSurfaceBlock8_mip1, R_DrawSurfaceBlock8_mip2, R_DrawSurfaceBlock8_mip3]);
 
 /*
 ===============

@@ -1,6 +1,7 @@
 // cl_ents.c -- entity parsing and management
 
 import { type Vec3, VectorCopy, VectorMA, AngleVectors, LerpAngle, anglemod } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   EntityStateT,
   PlayerStateT,
@@ -995,7 +996,7 @@ function CL_AddPacketEntities(frame: FrameT): void {
       } else if (effects & EF_FLIES) {
         CL_FlyEffect(cent, ent.origin);
       } else if (effects & EF_BFG) {
-        const bfg_lightramp = [300, 400, 600, 300, 150, 75];
+        const bfg_lightramp = fixedLength("bfg_lightramp", 6, [300, 400, 600, 300, 150, 75]);
 
         let i: number;
         if (effects & EF_ANIM_ALLFAST) {

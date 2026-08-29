@@ -52,10 +52,17 @@ function mkframe(aifunc: ((self: EdictT, dist: number) => void) | null, dist: nu
   return f;
 }
 
-function mkmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: ((self: EdictT) => void) | null = null): MmoveT {
+function mkmove(
+  firstframe: number,
+  lastframe: number,
+  frame: MframeT[],
+  endfunc: ((self: EdictT) => void) | null = null,
+  allowFrameCountMismatch = false,
+): MmoveT {
   const m = new MmoveT();
   m.firstframe = firstframe;
   m.lastframe = lastframe;
+  m.allowFrameCountMismatch = allowFrameCountMismatch;
   m.frame = frame;
   m.endfunc = endfunc;
   return m;
@@ -144,7 +151,7 @@ const gunner_frames_fidget: MframeT[] = [
 // frame array above has 49 rows; the engine only ever reads the first
 // (lastframe - firstframe + 1) entries, so the trailing 9 rows are inert in
 // the original game too. Transcribed in full for a faithful port.
-const gunner_move_fidget = mkmove(FRAME.FRAME_stand31, FRAME.FRAME_stand70, gunner_frames_fidget, gunner_stand);
+const gunner_move_fidget = mkmove(FRAME.FRAME_stand31, FRAME.FRAME_stand70, gunner_frames_fidget, gunner_stand, true);
 
 function gunner_fidget(self: EdictT): void {
   if (self.monsterinfo.aiflags & AI_STAND_GROUND) return;

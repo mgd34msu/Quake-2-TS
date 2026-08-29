@@ -6,6 +6,7 @@
 // sibling ctf/* modules, never from ../game, per this unit's SCOPE.
 
 import { random, vec3, vec3_origin, VectorAdd, VectorClear, VectorCopy, VectorLength, VectorMA, VectorNormalize, VectorScale, VectorSet, VectorSubtract, AngleVectors, DotProduct, type Vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   ANGLE2SHORT,
   ATTN_NONE,
@@ -2630,7 +2631,7 @@ const creditsmenu: PmenuT[] = [
   new PmenuT("Return to Main Menu", PMENU_ALIGN_LEFT, CTFReturnToMain),
 ];
 
-const joinmenu: PmenuT[] = [
+const joinmenu: PmenuT[] = fixedLength("joinmenu", 18, [
   new PmenuT("*Quake II", PMENU_ALIGN_CENTER, null),
   new PmenuT("*ThreeWave Capture the Flag", PMENU_ALIGN_CENTER, null),
   new PmenuT(null, PMENU_ALIGN_CENTER, null),
@@ -2649,7 +2650,7 @@ const joinmenu: PmenuT[] = [
   new PmenuT("ESC to Exit Menu", PMENU_ALIGN_LEFT, null),
   new PmenuT("(TAB to Return)", PMENU_ALIGN_LEFT, null),
   new PmenuT(CTF_STRING_VER, PMENU_ALIGN_RIGHT, null),
-];
+]);
 
 const nochasemenu: PmenuT[] = [
   new PmenuT("*Quake II", PMENU_ALIGN_CENTER, null),

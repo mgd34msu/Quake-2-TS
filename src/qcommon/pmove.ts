@@ -16,6 +16,7 @@ import {
   CrossProduct,
   AngleVectors,
 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   type TraceT,
   type CsurfaceT,
@@ -859,7 +860,7 @@ precision of the network channel and in a valid position.
 ================
 */
 // try all single bits first
-const jitterbits: readonly number[] = [0, 4, 1, 2, 3, 5, 6, 7];
+const jitterbits: readonly number[] = fixedLength("jitterbits", 8, [0, 4, 1, 2, 3, 5, 6, 7]);
 
 export function PM_SnapPosition(): void {
   const sign = [0, 0, 0];
@@ -898,7 +899,7 @@ PM_InitialSnapPosition
 */
 // #if 0 branch (the old triple-nested z/y/x=1..-1 search) is dropped per
 // PORTING.md; only the active `#else` implementation below is ported.
-const offset: readonly number[] = [0, -1, 1];
+const offset: readonly number[] = fixedLength("offset", 3, [0, -1, 1]);
 
 export function PM_InitialSnapPosition(): void {
   const base = new Int16Array(3);

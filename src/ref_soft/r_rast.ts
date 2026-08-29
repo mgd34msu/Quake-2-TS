@@ -42,6 +42,7 @@ already resolves this module to make the R_InitSkyBox call.
 */
 
 import { type Vec3, vec3, DotProduct, VectorSubtract, VectorCopy } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import { CplaneT, ERR_DROP, SURF_SKY, SURF_TRANS33, SURF_TRANS66 } from "../shared/q_shared";
 import { MAX_MAP_EDGES, MAX_MAP_FACES, MAX_MAP_VERTS } from "../qcommon/qfiles";
 import {
@@ -148,20 +149,24 @@ function TransformVector(inV: Vec3, out: Vec3): void {
 //===========================================================================
 // sky box (r_rast.c's own file-scope statics)
 
-const skybox_planes = [2, -128, 0, -128, 2, 128, 1, 128, 0, 128, 1, -128];
+const skybox_planes = fixedLength("skybox_planes", 12, [2, -128, 0, -128, 2, 128, 1, 128, 0, 128, 1, -128]);
 // ported verbatim: 1-based, signed-for-winding-direction indices
-const box_surfedges = [1, 2, 3, 4, -1, 5, 6, 7, 8, 9, -6, 10, -2, -7, -9, 11, 12, -3, -11, -8, -12, -10, -5, -4];
-const box_edges = [1, 2, 2, 3, 3, 4, 4, 1, 1, 5, 5, 6, 6, 2, 7, 8, 8, 6, 5, 7, 8, 3, 7, 4];
-const box_faces = [0, 0, 2, 2, 2, 0];
-const box_vecs: [Vec3, Vec3][] = [
+const box_surfedges = fixedLength(
+  "box_surfedges",
+  24,
+  [1, 2, 3, 4, -1, 5, 6, 7, 8, 9, -6, 10, -2, -7, -9, 11, 12, -3, -11, -8, -12, -10, -5, -4],
+);
+const box_edges = fixedLength("box_edges", 24, [1, 2, 2, 3, 3, 4, 4, 1, 1, 5, 5, 6, 6, 2, 7, 8, 8, 6, 5, 7, 8, 3, 7, 4]);
+const box_faces = fixedLength("box_faces", 6, [0, 0, 2, 2, 2, 0]);
+const box_vecs: [Vec3, Vec3][] = fixedLength("box_vecs", 6, [
   [vec3(0, -1, 0), vec3(-1, 0, 0)],
   [vec3(0, 1, 0), vec3(0, 0, -1)],
   [vec3(0, -1, 0), vec3(1, 0, 0)],
   [vec3(1, 0, 0), vec3(0, 0, -1)],
   [vec3(0, -1, 0), vec3(0, 0, -1)],
   [vec3(-1, 0, 0), vec3(0, 0, -1)],
-];
-const box_verts: Vec3[] = [
+]);
+const box_verts: Vec3[] = fixedLength("box_verts", 8, [
   vec3(-1, -1, -1),
   vec3(-1, 1, -1),
   vec3(1, 1, -1),
@@ -170,7 +175,7 @@ const box_verts: Vec3[] = [
   vec3(-1, 1, 1),
   vec3(1, -1, 1),
   vec3(1, 1, 1),
-];
+]);
 
 let r_skyframe = -1;
 let r_skyfaces: MsurfaceT[] = [];

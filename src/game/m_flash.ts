@@ -5,8 +5,9 @@
 // needs it to position muzzle flashes
 
 import { vec3, type Vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 
-const monster_flash_offset: readonly Vec3[] = [
+const monster_flash_offset: readonly Vec3[] = fixedLength("monster_flash_offset", 212, [
   // flash 0 is not used
   vec3(0.0, 0.0, 0.0),
 
@@ -466,7 +467,7 @@ const monster_flash_offset: readonly Vec3[] = [
 
   // end of table
   vec3(0.0, 0.0, 0.0),
-];
+]);
 
 export function monsterFlashOffset(): readonly Vec3[] {
   return monster_flash_offset;

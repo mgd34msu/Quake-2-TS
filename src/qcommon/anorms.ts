@@ -2,10 +2,11 @@
 // the vec3_t bytedirs[NUMVERTEXNORMALS] table. MSG_WriteDir/MSG_ReadDir in
 // sizebuf.ts use this table to quantize direction vectors to a single byte.
 import { vec3, type Vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 
 export const NUMVERTEXNORMALS = 162;
 
-export const bytedirs: Vec3[] = [
+export const bytedirs: Vec3[] = fixedLength("bytedirs", NUMVERTEXNORMALS, [
   vec3(-0.525731, 0.000000, 0.850651),
   vec3(-0.442863, 0.238856, 0.864188),
   vec3(-0.295242, 0.000000, 0.955423),
@@ -168,4 +169,4 @@ export const bytedirs: Vec3[] = [
   vec3(-0.425325, -0.688191, -0.587785),
   vec3(-0.587785, -0.425325, -0.688191),
   vec3(-0.688191, -0.587785, -0.425325),
-];
+]);

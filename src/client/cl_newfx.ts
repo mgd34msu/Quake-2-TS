@@ -18,6 +18,7 @@ import { frand, crand } from "../qcommon/common";
 import { PITCH, YAW, ROLL, VIDREF_GL } from "../shared/q_shared";
 import { cl, PARTICLE_GRAVITY, INSTANT_PARTICLE, type ClSustainT, type CentityT } from "./client";
 import { rand, particleList, MakeNormalVectors, CL_AllocDlight } from "./cl_fx";
+import { fixedLength } from "../shared/fixed";
 
 // `extern int vidref_val` -- see cl_fx.ts's CL_AddDLights banner: no GL
 // renderer exists in this port (ref_gl/ is not ported per PORTING.md), so
@@ -600,7 +601,7 @@ export function CL_MonsterPlasma_Shell(origin: Vec3): void {
   }
 }
 
-const widowbeamoutColortable = [2 * 8, 13 * 8, 21 * 8, 18 * 8];
+const widowbeamoutColortable = fixedLength("widowbeamoutColortable", 4, [2 * 8, 13 * 8, 21 * 8, 18 * 8]);
 
 export function CL_Widowbeamout(self: ClSustainT): void {
   const ratio = 1.0 - (self.endtime - cl.time) / 2100.0;
@@ -629,7 +630,7 @@ export function CL_Widowbeamout(self: ClSustainT): void {
   }
 }
 
-const nukeblastColortable = [110, 112, 114, 116];
+const nukeblastColortable = fixedLength("nukeblastColortable", 4, [110, 112, 114, 116]);
 
 export function CL_Nukeblast(self: ClSustainT): void {
   const ratio = 1.0 - (self.endtime - cl.time) / 1000.0;
@@ -658,7 +659,7 @@ export function CL_Nukeblast(self: ClSustainT): void {
   }
 }
 
-const widowSplashColortable = [2 * 8, 13 * 8, 21 * 8, 18 * 8];
+const widowSplashColortable = fixedLength("widowSplashColortable", 4, [2 * 8, 13 * 8, 21 * 8, 18 * 8]);
 
 export function CL_WidowSplash(org: Vec3): void {
   for (let i = 0; i < 256; i++) {

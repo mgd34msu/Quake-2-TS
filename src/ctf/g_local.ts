@@ -409,10 +409,53 @@ export class MframeT {
 }
 
 export class MmoveT {
-  firstframe = 0;
-  lastframe = 0;
-  frame: MframeT[] = [];
+  #firstframe = 0;
+  #lastframe = 0;
+  #frame: MframeT[] = [];
   endfunc: ((self: EdictT) => void) | null = null;
+
+  // Escape hatch for the rare table where the original C source itself
+  // declares a frame array longer than lastframe-firstframe+1 (id Software
+  // bug, not a porting error). Must be set to true before assigning `frame`
+  // and requires a comment at the call site citing the C evidence -- see
+  // src/game/m_actor.ts's actor_move_walk for the one known instance.
+  allowFrameCountMismatch = false;
+
+  get firstframe(): number {
+    return this.#firstframe;
+  }
+
+  set firstframe(value: number) {
+    this.#firstframe = value;
+  }
+
+  get lastframe(): number {
+    return this.#lastframe;
+  }
+
+  set lastframe(value: number) {
+    this.#lastframe = value;
+  }
+
+  // Every construction site in the codebase (the per-monster-file mkmove()/
+  // mmove() helpers, and the inline `const x = new MmoveT(); x.firstframe =
+  // ...; x.lastframe = ...; x.frame = ...; x.endfunc = ...;` pattern used by
+  // a few monster files) assigns frame after firstframe/lastframe are
+  // already final, so validating here catches a bad table at module load
+  // (boot) instead of the first time that monster's frame table runs.
+  get frame(): MframeT[] {
+    return this.#frame;
+  }
+
+  set frame(value: MframeT[]) {
+    const expected = this.#lastframe - this.#firstframe + 1;
+    if (value.length !== expected && !this.allowFrameCountMismatch) {
+      throw new Error(
+        `MmoveT: firstframe=${this.#firstframe} lastframe=${this.#lastframe} expects ${expected} frames (lastframe-firstframe+1), got ${value.length}`,
+      );
+    }
+    this.#frame = value;
+  }
 }
 
 export class MonsterInfoT {

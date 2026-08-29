@@ -72,10 +72,17 @@ function mkframe(aifunc: ((self: EdictT, dist: number) => void) | null, dist: nu
   return f;
 }
 
-function mkmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: ((self: EdictT) => void) | null = null): MmoveT {
+function mkmove(
+  firstframe: number,
+  lastframe: number,
+  frame: MframeT[],
+  endfunc: ((self: EdictT) => void) | null = null,
+  allowFrameCountMismatch = false,
+): MmoveT {
   const m = new MmoveT();
   m.firstframe = firstframe;
   m.lastframe = lastframe;
+  m.allowFrameCountMismatch = allowFrameCountMismatch;
   m.frame = frame;
   m.endfunc = endfunc;
   return m;
@@ -195,7 +202,12 @@ const boss2_frames_stand: MframeT[] = Array.from({ length: 21 }, () => mkframe(a
 const boss2_move_stand = mkmove(FRAME.FRAME_stand30, FRAME.FRAME_stand50, boss2_frames_stand);
 
 const boss2_frames_fidget: MframeT[] = Array.from({ length: 30 }, () => mkframe(ai_stand, 0));
-const boss2_move_fidget = mkmove(FRAME.FRAME_stand1, FRAME.FRAME_stand30, boss2_frames_fidget);
+// C bug, not a porting error: m_boss2.c defines FRAME_stand30=0 and
+// FRAME_stand1=21 (m_boss2.h:24,45) and then declares
+// `mmove_t boss2_move_fidget = {FRAME_stand1, FRAME_stand30, ...}` (m_boss2.c:213),
+// i.e. firstframe(21) > lastframe(0) -- an inverted range in the original
+// data, independent of the 30-row frame table. Preserved byte-for-byte.
+const boss2_move_fidget = mkmove(FRAME.FRAME_stand1, FRAME.FRAME_stand30, boss2_frames_fidget, null, true);
 
 const boss2_frames_walk: MframeT[] = Array.from({ length: 20 }, () => mkframe(ai_walk, 8));
 const boss2_move_walk = mkmove(FRAME.FRAME_walk1, FRAME.FRAME_walk20, boss2_frames_walk);

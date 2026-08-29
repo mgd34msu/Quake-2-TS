@@ -1,6 +1,7 @@
 // g_items.c
 
 import { AngleVectors, vec3, VectorAdd, VectorCopy, VectorScale, VectorSet } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   ATTN_NORM,
   CHAN_AUTO,
@@ -1061,7 +1062,7 @@ function mkItem(fields: Partial<GItemT>): GItemT {
 // end-of-list marker. 43 entries total; `InitItems` sets `game.num_items`
 // to `ITEMLIST.length - 1` exactly as the C `sizeof(itemlist)/sizeof(...)-1`
 // does.
-const ITEMLIST: GItemT[] = [
+const ITEMLIST: GItemT[] = fixedLength("ITEMLIST", 43, [
   mkItem({}), // leave index 0 alone
 
   //
@@ -1830,7 +1831,7 @@ const ITEMLIST: GItemT[] = [
 
   // end of list marker
   mkItem({}),
-];
+]);
 
 /*QUAKED item_health (.3 .3 1) (-16 -16 -16) (16 16 16)
  */

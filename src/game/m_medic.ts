@@ -10,6 +10,7 @@ MEDIC
 */
 
 import { AngleVectors, random, VectorCopy, VectorLength, VectorMA, VectorSet, VectorSubtract, vec3, type Vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   ATTN_IDLE,
   ATTN_NORM,
@@ -535,7 +536,7 @@ function medic_hook_launch(self: EdictT): void {
   gi.sound(self, CHAN_WEAPON, sound_hook_launch, 1, ATTN_NORM, 0);
 }
 
-const medic_cable_offsets: readonly Vec3[] = [
+const medic_cable_offsets: readonly Vec3[] = fixedLength("medic_cable_offsets", 10, [
   vec3(45.0, -9.2, 15.5),
   vec3(48.4, -9.7, 15.2),
   vec3(47.8, -9.8, 15.8),
@@ -546,7 +547,7 @@ const medic_cable_offsets: readonly Vec3[] = [
   vec3(34.3, -18.4, 10.7),
   vec3(32.7, -19.7, 10.4),
   vec3(32.7, -19.7, 10.4),
-];
+]);
 
 function medic_cable_attack(self: EdictT): void {
   const enemy = self.enemy;

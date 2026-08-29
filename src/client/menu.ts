@@ -131,6 +131,7 @@ import {
   type MenuItemU,
 } from "./qmenu";
 import { Field_Key, isField, Menu_AddItem, Menu_AdjustCursor, Menu_Center, Menu_Draw, Menu_ItemAtCursor, Menu_SelectItem, Menu_SetStatusBar, Menu_SlideItem } from "./qmenu_impl";
+import { fixedLength } from "../shared/fixed";
 
 // C's per-widget callbacks take `void *self` and cast it back to the
 // concrete struct type the call site knows it is (`(menuaction_s *)self`,
@@ -367,7 +368,13 @@ let m_main_cursor = 0;
 function M_Main_Draw(): void {
   if (!re) return;
 
-  const names = ["m_main_game", "m_main_multiplayer", "m_main_options", "m_main_video", "m_main_quit"];
+  const names = fixedLength("M_Main_Draw names", MAIN_ITEMS, [
+    "m_main_game",
+    "m_main_multiplayer",
+    "m_main_options",
+    "m_main_video",
+    "m_main_quit",
+  ]);
   let widest = -1;
   for (const n of names) {
     const { w } = re.DrawGetPicSize(n);
@@ -2526,8 +2533,15 @@ interface PlayermodelinfoS {
 let s_pmi: PlayermodelinfoS[] = [];
 let s_numplayermodels = 0;
 
-const rate_tbl = [2500, 3200, 5000, 10000, 25000];
-const rate_names = ["28.8 Modem", "33.6 Modem", "Single ISDN", "Dual ISDN/Cable", "T1/LAN", "User defined"];
+const rate_tbl = fixedLength("rate_tbl", 5, [2500, 3200, 5000, 10000, 25000]);
+const rate_names = fixedLength("rate_names", 6, [
+  "28.8 Modem",
+  "33.6 Modem",
+  "Single ISDN",
+  "Dual ISDN/Cable",
+  "T1/LAN",
+  "User defined",
+]);
 
 function DownloadOptionsFunc(): void {
   M_Menu_DownloadOptions_f();

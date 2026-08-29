@@ -411,6 +411,9 @@ function R_AliasTransformFinalVerts(numpoints: number, fv: FinalvertT[], oldv: D
     lerped_vert[1] = r_lerp_move[1] + o.v[1] * r_lerp_backv[1] + n.v[1] * r_lerp_frontv[1];
     lerped_vert[2] = r_lerp_move[2] + o.v[2] * r_lerp_backv[2] + n.v[2] * r_lerp_frontv[2];
 
+    // bytedirs is guarded by fixedLength("bytedirs", NUMVERTEXNORMALS, ...) at
+    // its declaration (src/qcommon/anorms.ts), so this index is safe as long
+    // as model data never produces a lightnormalindex >= NUMVERTEXNORMALS.
     const plightnormal = bytedirs[n.lightnormalindex];
 
     // PMM - added double damage shell

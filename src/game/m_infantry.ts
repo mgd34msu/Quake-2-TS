@@ -11,6 +11,7 @@ INFANTRY
 */
 
 import { AngleVectors, random, VectorMA, VectorNormalize, VectorSet, VectorSubtract, vec3, type Vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   ATTN_IDLE,
   ATTN_NORM,
@@ -263,7 +264,7 @@ function infantry_pain(self: EdictT, _other: EdictT, _kick: number, _damage: num
 
 // C declares this global (not `static`) but no other translation unit
 // references it via an `extern` declaration, so it stays module-private here.
-const aimangles: readonly Vec3[] = [
+const aimangles: readonly Vec3[] = fixedLength("aimangles", 12, [
   vec3(0.0, 5.0, 0.0),
   vec3(10.0, 15.0, 0.0),
   vec3(20.0, 25.0, 0.0),
@@ -276,7 +277,7 @@ const aimangles: readonly Vec3[] = [
   vec3(40.0, 35.0, 0.0),
   vec3(70.0, 35.0, 0.0),
   vec3(90.0, 35.0, 0.0),
-];
+]);
 
 function InfantryMachineGun(self: EdictT): void {
   const start = vec3();

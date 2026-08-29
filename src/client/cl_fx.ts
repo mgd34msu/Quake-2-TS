@@ -286,6 +286,7 @@ import { ERR_DROP, MAX_EDICTS } from "../shared/q_shared";
 import { MSG_ReadShort, MSG_ReadByte } from "../qcommon/sizebuf";
 import { monsterFlashOffset } from "../game/m_flash";
 import { CL_SmokeAndFlash, cl_sfx_footsteps } from "./cl_tent";
+import { fixedLength } from "../shared/fixed";
 
 // C's raw rand() (0..0x7fff), used directly (rather than through frand()/
 // crand()) all over cl_fx.c/cl_newfx.c/cl_tent.c for its bit-masking idiom
@@ -1311,7 +1312,7 @@ export function CL_ExplosionParticles(org: Vec3): void {
   }
 }
 
-const bigTeleportColortable = [2 * 8, 13 * 8, 21 * 8, 18 * 8];
+const bigTeleportColortable = fixedLength("bigTeleportColortable", 4, [2 * 8, 13 * 8, 21 * 8, 18 * 8]);
 
 export function CL_BigTeleportParticles(org: Vec3): void {
   for (let i = 0; i < 4096; i++) {

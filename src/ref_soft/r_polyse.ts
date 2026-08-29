@@ -46,6 +46,7 @@ by this module instead of the dead r_local.ts copies.
 */
 
 import { RDF_IRGOGGLES, RF_IR_VISIBLE } from "../shared/q_shared";
+import { fixedLength } from "../shared/fixed";
 import { rand1k, MASK_1K } from "./rand1k";
 import { adivtabQuotient, adivtabRemainder, adivtabIndex } from "./adivtab";
 import { MAXHEIGHT, MAX_LBM_HEIGHT, aliastriangleparms, currententity, r_affinetridesc, r_aliasblendcolor, r_newrefdef, vid, SetAliasBlendColor } from "./r_local";
@@ -81,7 +82,7 @@ class EdgetableT {
 export type DrawSpansFn = (spans: SpanpackageT[], start: number) => void;
 
 // PGM: IR-goggles palette remap, verbatim from r_polyse.c's irtable[256].
-const irtable: Uint8Array = new Uint8Array([
+const irtable: Uint8Array = fixedLength("irtable", 256, new Uint8Array([
   79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 64, 65, 66, 67, 68, 69, 70,
   71, 72, 73, 74, 75, 76, 77, 78, 79, 208, 208, 208, 208, 208, 208, 208, 208, 64, 66, 68, 70, 72, 74, 76, 78, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
   76, 77, 78, 79, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 64, 66, 68, 70, 72, 74, 76, 78, 68, 67, 66, 65, 64, 65, 66, 67, 68, 69, 70,
@@ -89,7 +90,7 @@ const irtable: Uint8Array = new Uint8Array([
   74, 75, 76, 77, 78, 79, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 64,
   65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 64, 65, 66, 67, 68, 69, 70, 71, 64, 65, 66, 67, 68, 69, 70, 71, 64, 65, 66, 67, 68, 69, 70, 71,
   72, 73, 74, 75, 76, 77, 78, 79, 208, 208, 64, 64, 70, 71, 72, 64, 66, 68, 70, 64, 65, 66, 67, 68,
-]);
+]));
 
 // aliastriangleparms.a/b/c coordinates, copied out per PORTING.md's
 // out-param idiom -- indices are [u, v, s, t, light, zi] matching the C
@@ -101,7 +102,7 @@ export const r_p0: number[] = [0, 0, 0, 0, 0, 0];
 export const r_p1: number[] = [0, 0, 0, 0, 0, 0];
 export const r_p2: number[] = [0, 0, 0, 0, 0, 0];
 
-const edgetables: EdgetableT[] = [
+const edgetables: EdgetableT[] = fixedLength("edgetables", 12, [
   edge(0, 1, r_p0, r_p2, null, 2, r_p0, r_p1, r_p2),
   edge(0, 2, r_p1, r_p0, r_p2, 1, r_p1, r_p2, null),
   edge(1, 1, r_p0, r_p2, null, 1, r_p1, r_p2, null),
@@ -114,7 +115,7 @@ const edgetables: EdgetableT[] = [
   edge(1, 1, r_p2, r_p1, null, 1, r_p0, r_p1, null),
   edge(1, 1, r_p1, r_p0, null, 1, r_p2, r_p0, null),
   edge(0, 1, r_p0, r_p2, null, 1, r_p0, r_p1, null),
-];
+]);
 
 function edge(
   isflattop: number,

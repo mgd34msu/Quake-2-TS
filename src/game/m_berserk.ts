@@ -129,6 +129,7 @@ const berserk_frames_walk: MframeT[] = [
 const berserk_move_walk = new MmoveT();
 berserk_move_walk.firstframe = F.FRAME_walkc1;
 berserk_move_walk.lastframe = F.FRAME_walkc11;
+berserk_move_walk.allowFrameCountMismatch = true;
 berserk_move_walk.frame = berserk_frames_walk;
 berserk_move_walk.endfunc = null;
 

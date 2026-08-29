@@ -55,10 +55,17 @@ function mkframe(aifunc: ((self: EdictT, dist: number) => void) | null, dist: nu
   return f;
 }
 
-function mkmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: ((self: EdictT) => void) | null = null): MmoveT {
+function mkmove(
+  firstframe: number,
+  lastframe: number,
+  frame: MframeT[],
+  endfunc: ((self: EdictT) => void) | null = null,
+  allowFrameCountMismatch = false,
+): MmoveT {
   const m = new MmoveT();
   m.firstframe = firstframe;
   m.lastframe = lastframe;
+  m.allowFrameCountMismatch = allowFrameCountMismatch;
   m.frame = frame;
   m.endfunc = endfunc;
   return m;
@@ -218,7 +225,10 @@ const brain_frames_defense: MframeT[] = [
 ];
 // C declares brain_move_defense but nothing in this file (or SP_monster_brain)
 // ever assigns it to monsterinfo.currentmove; dead code in the original too.
-const brain_move_defense = mkmove(FRAME.FRAME_defens01, FRAME.FRAME_defens08, brain_frames_defense, null);
+// It also carries a second C bug independent of that: m_brain.c's
+// brain_frames_defense[] has 9 rows but FRAME_defens01(154)..FRAME_defens08(161)
+// only spans 8 (game/m_brain.c:244-256). Preserved byte-for-byte.
+const brain_move_defense = mkmove(FRAME.FRAME_defens01, FRAME.FRAME_defens08, brain_frames_defense, null, true);
 
 const brain_frames_pain3: MframeT[] = [
   mkframe(ai_move, -2),

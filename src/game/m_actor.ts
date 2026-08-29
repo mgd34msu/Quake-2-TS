@@ -5,6 +5,7 @@ Ported from game/m_actor.c (GNU GPL v2 or later).
 // g_actor.c
 
 import { AngleVectors, random, VectorCopy, VectorMA, VectorNormalize, VectorSet, VectorSubtract, vec3 } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import { ATTN_NORM, CHAN_VOICE, CplaneT, CsurfaceT, MZ2_ACTOR_MACHINEGUN_1, PRINT_CHAT, YAW } from "../shared/q_shared";
 import {
   AI_BRUTAL,
@@ -46,10 +47,17 @@ function mkframe(aifunc: ((self: EdictT, dist: number) => void) | null, dist: nu
   return f;
 }
 
-function mkmove(firstframe: number, lastframe: number, frame: MframeT[], endfunc: ((self: EdictT) => void) | null = null): MmoveT {
+function mkmove(
+  firstframe: number,
+  lastframe: number,
+  frame: MframeT[],
+  endfunc: ((self: EdictT) => void) | null = null,
+  allowFrameCountMismatch = false,
+): MmoveT {
   const m = new MmoveT();
   m.firstframe = firstframe;
   m.lastframe = lastframe;
+  m.allowFrameCountMismatch = allowFrameCountMismatch;
   m.frame = frame;
   m.endfunc = endfunc;
   return m;
@@ -59,7 +67,7 @@ const DEFAULT_BULLET_HSPREAD = 300;
 const DEFAULT_BULLET_VSPREAD = 500;
 
 const MAX_ACTOR_NAMES = 8;
-const actor_names: string[] = ["Hellrot", "Tokay", "Killme", "Disruptor", "Adrianator", "Rambear", "Titus", "Bitterman"];
+const actor_names: string[] = fixedLength("actor_names", 8, ["Hellrot", "Tokay", "Killme", "Disruptor", "Adrianator", "Rambear", "Titus", "Bitterman"]);
 
 const messages: string[] = ["Watch it", "#$@*&", "Idiot", "Check your targets"];
 
@@ -92,7 +100,12 @@ const actor_frames_walk: MframeT[] = [
   mkframe(ai_walk, 0),
   mkframe(ai_walk, 0),
 ];
-const actor_move_walk = mkmove(FRAME.FRAME_walk01, FRAME.FRAME_walk08, actor_frames_walk);
+// C bug, not a porting error: m_actor.c's actor_frames_walk[] has 11 rows but
+// actor_move_walk = {FRAME_walk01, FRAME_walk08, ...} only spans 8 frames
+// (game/m_actor.c:97-111 vs. m_actor.h FRAME_walk01=251/FRAME_walk08=258).
+// The engine only ever reads indices firstframe..lastframe, so the extra
+// three rows are dead in the original game too; preserved byte-for-byte.
+const actor_move_walk = mkmove(FRAME.FRAME_walk01, FRAME.FRAME_walk08, actor_frames_walk, null, true);
 
 function actor_walk(self: EdictT): void {
   self.monsterinfo.currentmove = actor_move_walk;
@@ -112,7 +125,12 @@ const actor_frames_run: MframeT[] = [
   mkframe(ai_run, -2),
   mkframe(ai_run, -1),
 ];
-const actor_move_run = mkmove(FRAME.FRAME_run02, FRAME.FRAME_run07, actor_frames_run);
+// C bug, not a porting error: m_actor.c's actor_frames_run[] has 12 rows but
+// actor_move_run = {FRAME_run02, FRAME_run07, ...} only spans 6 frames
+// (game/m_actor.c:119-134 vs. m_actor.h FRAME_run02=93/FRAME_run07=98). The
+// engine only ever reads indices firstframe..lastframe, so the extra six
+// rows are dead in the original game too; preserved byte-for-byte.
+const actor_move_run = mkmove(FRAME.FRAME_run02, FRAME.FRAME_run07, actor_frames_run, null, true);
 
 function actor_run(self: EdictT): void {
   if (level.time < self.pain_debounce_time && self.enemy === null) {

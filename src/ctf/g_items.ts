@@ -1,6 +1,7 @@
 // g_items.c
 
 import { AngleVectors, vec3, VectorAdd, VectorCopy, VectorScale, VectorSet } from "../shared/math";
+import { fixedLength } from "../shared/fixed";
 import {
   ATTN_NORM,
   CHAN_AUTO,
@@ -1096,10 +1097,10 @@ function mkItem(fields: Partial<GItemT>): GItemT {
 // including index 0 ("leave index 0 alone") and the trailing `{NULL}`
 // end-of-list marker. 42 base entries (game.num_items before this unit's
 // delta) plus this unit's ctf/g_items.c delta (weapon_grapple,
-// item_flag_team1/2, item_tech1-4 = 7 entries) = 49 entries total;
+// item_flag_team1/2, item_tech1-4 = 7 entries) = 50 entries total;
 // `InitItems` sets `game.num_items` to `ITEMLIST.length - 1` exactly as the
 // C `sizeof(itemlist)/sizeof(...)-1` does.
-const ITEMLIST: GItemT[] = [
+const ITEMLIST: GItemT[] = fixedLength("ITEMLIST", 50, [
   mkItem({}), // leave index 0 alone
 
   //
@@ -1975,7 +1976,7 @@ const ITEMLIST: GItemT[] = [
 
   // end of list marker
   mkItem({}),
-];
+]);
 
 /*QUAKED item_health (.3 .3 1) (-16 -16 -16) (16 16 16)
  */

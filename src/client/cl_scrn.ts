@@ -44,6 +44,7 @@ import {
   setCrosshairDims,
 } from "./screen";
 import { cl, cls, re, ConnstateT, KeydestT, clCvars, CMD_BACKUP } from "./client";
+import { fixedLength } from "../shared/fixed";
 import { viddef } from "./vid";
 import { Cvar_Get, Cvar_Set, Cvar_SetValue } from "../qcommon/cvar";
 import { Cmd_AddCommand, Cmd_Argc, Cmd_Argv } from "../qcommon/cmd";
@@ -114,7 +115,7 @@ class DirtyT {
 }
 
 let scr_dirty = new DirtyT();
-const scr_old_dirty: DirtyT[] = [new DirtyT(), new DirtyT()];
+const scr_old_dirty: DirtyT[] = fixedLength("scr_old_dirty", 2, [new DirtyT(), new DirtyT()]);
 
 /*
 ===============================================================================
@@ -680,10 +681,10 @@ function SCR_TileClear(): void {
 //===============================================================
 
 const STAT_MINUS = 10; // num frame for '-' stats digit
-const sb_nums: string[][] = [
-  ["num_0", "num_1", "num_2", "num_3", "num_4", "num_5", "num_6", "num_7", "num_8", "num_9", "num_minus"],
-  ["anum_0", "anum_1", "anum_2", "anum_3", "anum_4", "anum_5", "anum_6", "anum_7", "anum_8", "anum_9", "anum_minus"],
-];
+const sb_nums: string[][] = fixedLength("sb_nums", 2, [
+  fixedLength("sb_nums row", 11, ["num_0", "num_1", "num_2", "num_3", "num_4", "num_5", "num_6", "num_7", "num_8", "num_9", "num_minus"]),
+  fixedLength("sb_nums row", 11, ["anum_0", "anum_1", "anum_2", "anum_3", "anum_4", "anum_5", "anum_6", "anum_7", "anum_8", "anum_9", "anum_minus"]),
+]);
 
 const ICON_WIDTH = 24;
 const ICON_HEIGHT = 24;

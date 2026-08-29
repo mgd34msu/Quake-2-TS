@@ -1,6 +1,7 @@
 // cl_parse.c -- parse a message received from the server
 
 import { Sys_SendKeyEvents } from "../platform/sys";
+import { fixedLength } from "../shared/fixed";
 import { MSG_ReadByte, MSG_ReadShort, MSG_ReadLong, MSG_ReadString, MSG_ReadPos, MSG_WriteByte, MSG_WriteString } from "../qcommon/sizebuf";
 import { net_message } from "../qcommon/net_chan";
 import { SvcOpsT, ClcOpsT, PROTOCOL_VERSION, ERR_DROP, BASEDIRNAME } from "../qcommon/qcommon";
@@ -55,7 +56,7 @@ const DEFAULT_SOUND_PACKET_ATTENUATION = 1.0;
 // Populated here (cl_parse.c's true owning file) into client.ts's holder
 // array; entries past svc_frame stay "" (client.h's implicit NULL, which
 // `if (!svc_strings[cmd])` treats identically to an empty string).
-const SVC_STRING_NAMES: string[] = [
+const SVC_STRING_NAMES: string[] = fixedLength("SVC_STRING_NAMES", 21, [
   "svc_bad",
   "svc_muzzleflash",
   "svc_muzzlflash2",
@@ -77,7 +78,7 @@ const SVC_STRING_NAMES: string[] = [
   "svc_packetentities",
   "svc_deltapacketentities",
   "svc_frame",
-];
+]);
 for (let i = 0; i < SVC_STRING_NAMES.length; i++) svc_strings[i] = SVC_STRING_NAMES[i];
 
 //=============================================================================
