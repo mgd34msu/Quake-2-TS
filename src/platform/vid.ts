@@ -90,6 +90,9 @@ const vid_modes: VidmodeT[] = [
   new VidmodeT("Mode 7: 1152x864", 1152, 864, 7),
   new VidmodeT("Mode 8: 1280x960", 1280, 960, 8),
   new VidmodeT("Mode 9: 1600x1200", 1600, 1200, 9),
+  // Extension beyond the C table (vid_menu.c stopped at 1600x1200 in the
+  // 4:3 CRT era): a 16:9 mode so `vid_mode 10` gives native 1080p.
+  new VidmodeT("Mode 10: 1920x1080", 1920, 1080, 10),
 ];
 
 export function VID_GetModeInfo(mode: number): { width: number; height: number } | null {

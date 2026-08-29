@@ -143,6 +143,7 @@ import {
   vpn,
   vright,
   vup,
+  SIN_BUFFER_SIZE,
 } from "./r_local";
 import {
   isMleaf,
@@ -234,7 +235,8 @@ R_InitTurb
 ================
 */
 export function R_InitTurb(): void {
-  for (let i = 0; i < 1280; i++) {
+  // C hardcodes 1280 here; the tables now scale with MAXWIDTH (mode 10)
+  for (let i = 0; i < SIN_BUFFER_SIZE; i++) {
     sintable[i] = AMP + Math.sin(((i * 3.14159 * 2) / CYCLE)) * AMP;
     intsintable[i] = AMP2 + Math.sin(((i * 3.14159 * 2) / CYCLE)) * AMP2; // AMP2, not 20
     blanktable[i] = 0; //PGM

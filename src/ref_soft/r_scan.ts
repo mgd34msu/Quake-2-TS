@@ -17,7 +17,7 @@ and r_misc.c's R_SetupFrame/D_ViewChanged (r_misc.ts) -- go through the
 exported `D_Set*` setters, and the readers import the bindings directly.
 */
 
-import { AMP2, CYCLE, SPEED, WARP_WIDTH, type EspanT, blanktable, intsintable, r_newrefdef, r_refdef, r_warpbuffer, sintable, vid } from "./r_local";
+import { AMP2, CYCLE, MAXHEIGHT, MAXWIDTH, SPEED, WARP_WIDTH, type EspanT, blanktable, intsintable, r_newrefdef, r_refdef, r_warpbuffer, sintable, vid } from "./r_local";
 
 //===========================================================================
 // relocated shared rasterizer state -- see file header comment.
@@ -112,8 +112,8 @@ the sine warp, to keep the edges from wrapping
 */
 let cached_width = 0;
 let cached_height = 0;
-const rowptr: number[] = new Array<number>(1200 + AMP2 * 2).fill(0); // index into r_warpbuffer, replaces byte*
-const column: number[] = new Array<number>(1600 + AMP2 * 2).fill(0);
+const rowptr: number[] = new Array<number>(MAXHEIGHT + AMP2 * 2).fill(0); // index into r_warpbuffer, replaces byte*
+const column: number[] = new Array<number>(MAXWIDTH + AMP2 * 2).fill(0);
 
 export function D_WarpScreen(): void {
   const w = r_newrefdef.width;

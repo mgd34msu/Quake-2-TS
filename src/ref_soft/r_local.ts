@@ -124,7 +124,7 @@ export const MAXVERTS = 64; // max points in a surface polygon
 export const MAXWORKINGVERTS = MAXVERTS + 4; // max points in an intermediate polygon (while processing)
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
 export const MAXHEIGHT = 1200;
-export const MAXWIDTH = 1600;
+export const MAXWIDTH = 1920; // raised past the C-era 4:3 table for mode 10 (1920x1080)
 
 export const INFINITE_DISTANCE = 0x10000; // distance that's always guaranteed farther than anything in the scene
 
@@ -409,9 +409,12 @@ export function SetDrawnPolyCount(v: number): void {
   r_drawnpolycount = v;
 }
 
-export const sintable: number[] = new Array<number>(1280).fill(0);
-export const intsintable: number[] = new Array<number>(1280).fill(0);
-export const blanktable: number[] = new Array<number>(1280).fill(0); // PGM
+// C sized these 1280 (R_InitTurb's hardcoded loop bound); D_WarpScreen
+// indexes up to refdef width + CYCLE, so they scale with MAXWIDTH here.
+export const SIN_BUFFER_SIZE = MAXWIDTH + CYCLE;
+export const sintable: number[] = new Array<number>(SIN_BUFFER_SIZE).fill(0);
+export const intsintable: number[] = new Array<number>(SIN_BUFFER_SIZE).fill(0);
+export const blanktable: number[] = new Array<number>(SIN_BUFFER_SIZE).fill(0); // PGM
 
 export const vup: Vec3 = vec3();
 export const base_vup: Vec3 = vec3();
