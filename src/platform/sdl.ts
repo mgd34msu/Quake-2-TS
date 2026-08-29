@@ -191,9 +191,6 @@ const symbols = {
   SDL_DestroyTexture: { args: ["ptr"], returns: "void" },
   SDL_UpdateTexture: { args: ["ptr", "ptr", "ptr", "i32"], returns: "i32" },
 
-  SDL_GetCurrentVideoDriver: { args: [], returns: "cstring" },
-  SDL_SetWindowMinimumSize: { args: ["ptr", "i32", "i32"], returns: "void" },
-  SDL_SetWindowMaximumSize: { args: ["ptr", "i32", "i32"], returns: "void" },
   SDL_PollEvent: { args: ["ptr"], returns: "i32" },
   SDL_PumpEvents: { args: [], returns: "void" },
 
@@ -360,15 +357,6 @@ export function SDLVID_Init(width: number, height: number, fullscreen: boolean):
     return false;
   }
 
-  // Declare the geometry fixed (min == max). Tiling Wayland compositors
-  // (Hyprland, sway) tile a plain window to fill the screen regardless of
-  // its requested size; a fixed-size toplevel is auto-floated at its real
-  // width x height instead.
-  if (!fullscreen) {
-    l.symbols.SDL_SetWindowMinimumSize(window, width, height);
-    l.symbols.SDL_SetWindowMaximumSize(window, width, height);
-  }
-
   renderer = l.symbols.SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   if (!renderer) renderer = l.symbols.SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
   if (!renderer) {
@@ -389,7 +377,6 @@ export function SDLVID_Init(width: number, height: number, fullscreen: boolean):
   texHeight = height;
   rgba = new Uint8Array(width * height * 4);
   framesPresented = 0;
-  Com_Printf("SDL video driver: %s\n", l.symbols.SDL_GetCurrentVideoDriver()?.toString() ?? "unknown");
   return true;
 }
 
