@@ -95,7 +95,7 @@ import { ri, currententity, currentmodel, glCvars, r_newrefdef, frustum, YAW, PI
 import { ParsedMd2T, MAX_VERTS, MAX_MD2SKINS } from "./gl_model";
 import { qgl, GL_Bind, GL_TexEnv, GL_TEXTURE_2D, GL_REPLACE, GL_BLEND } from "./gl_image";
 import { R_RotateForEntity, MYgluPerspective } from "./gl_rmain";
-import { R_LightPoint } from "./gl_light";
+import { lightspot, R_LightPoint } from "./gl_light";
 
 // standard OpenGL 1.1 enum values (`<GL/gl.h>`) this file calls qgl* with
 // directly; no shared GL-enum module exists yet across gl_*.ts, see
@@ -186,9 +186,7 @@ let shadedots: Float32Array = r_avertexnormal_dots[0];
 const shadevector: Vec3 = vec3();
 const shadelight: Vec3 = vec3();
 
-// gl_light.ts's real `lightspot` is module-private; see file header comment
-// for why GL_DrawAliasShadow uses this always-zero stand-in instead.
-const lightspot: Vec3 = vec3();
+// gl_light.c's `extern vec3_t lightspot`, filled by RecursiveLightPoint
 
 // vec4_t s_lerped[MAX_VERTS] -- see file header comment. Built lazily
 // (first-use, not at module top level) because gl_mesh.ts sits in a static

@@ -35,13 +35,8 @@ R_Shutdown, but qgl.ts itself is out of this unit's SCOPE beyond the narrow
 top-level lifecycle export) -- R_Shutdown does not call anything for this;
 reported gap/follow-up.
 
-`r_turbsin` scaling: the original `R_Init` halves gl_warp.c's file-scope
-`extern float r_turbsin[256]` table in place (`r_turbsin[j] *= 0.5;`) once at
-startup. gl_warp.ts's own `r_turbsin` is a module-private `const` (not
-exported, generated fresh from the unscaled `8*sin(...)` formula at import
-time) -- out of this unit's SCOPE to mutate or re-export. Not ported;
-reported deviation: gl_warp.ts's `EmitWaterPolys` runs at double the
-original's post-`R_Init` warp amplitude until a follow-up either exports a
+`r_turbsin` scaling: R_Init calls gl_warp.ts's R_ScaleTurbsinForRInit(),
+which reproduces C's one-halving-per-DLL-load semantics idempotently.
 setter there or applies the `*0.5` itself.
 
 `#ifdef WIN32` extension-pointer probing in R_Init (GL_EXT_compiled_vertex_array/
@@ -150,9 +145,9 @@ import {
   GL_TextureSolidMode,
   GL_SetTexturePalette,
 } from "./gl_image";
-import { loadQGLFromSystem } from "./qgl";
+import { loadQGLFromSystem, type GLGetProcAddressFn } from "./qgl";
 import { Draw_Char, Draw_Fill, Draw_FadeScreen, Draw_FindPic, Draw_GetPicSize, Draw_InitLocal, Draw_Pic, Draw_StretchPic, Draw_StretchRaw, Draw_TileClear, SetRawPalette } from "./gl_draw";
-import { R_SetSky } from "./gl_warp";
+import { R_ScaleTurbsinForRInit, R_SetSky } from "./gl_warp";
 import { R_DrawWorld, R_DrawAlphaSurfaces, R_MarkLeaves, R_DrawBrushModel } from "./gl_rsurf";
 import { R_LightPoint, R_PushDlights, R_RenderDlights } from "./gl_light";
 import { R_DrawAliasModel } from "./gl_mesh";
@@ -208,6 +203,9 @@ export interface GLimp {
   AppActivate(activate: boolean): void;
   EnableLogging(enable: boolean): void;
   LogNewFrame(): void;
+  // qgl.h resolves extensions via wglGetProcAddress/glXGetProcAddress;
+  // undefined = no live context source (tests, headless), dlsym fallback.
+  GetProcAddress?: GLGetProcAddressFn;
 }
 
 function defaultGLimp(): GLimp {
@@ -1026,8 +1024,7 @@ R_Init
 ===============
 */
 export function R_Init(hInstance: unknown, wndProc: unknown): boolean {
-  // for (j=0;j<256;j++) r_turbsin[j] *= 0.5; -- see file header comment,
-  // gl_warp.ts's r_turbsin is private and out of this unit's SCOPE.
+  R_ScaleTurbsinForRInit(); // for (j=0;j<256;j++) r_turbsin[j] *= 0.5;
 
   ri.Con_Printf(PRINT_ALL, `ref_gl version: ${REF_VERSION}\n`);
 
@@ -1035,9 +1032,11 @@ export function R_Init(hInstance: unknown, wndProc: unknown): boolean {
 
   R_Register();
 
-  // initialize our QGL dynamic bindings
+  // initialize our QGL dynamic bindings; extension entry points resolve
+  // through the platform's GetProcAddress (glX/wgl equivalent) when the
+  // GLimp provides one
   try {
-    SetQGL(loadQGLFromSystem());
+    SetQGL(loadQGLFromSystem(glimp.GetProcAddress));
   } catch {
     ri.Con_Printf(PRINT_ALL, `ref_gl::R_Init() - could not load "${glCvars.gl_driver ? glCvars.gl_driver.string : ""}"\n`);
     return false;

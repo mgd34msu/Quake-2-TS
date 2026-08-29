@@ -41,6 +41,7 @@ directory already existing and silently fails when it does not.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { SetScreenshotWriter } from "../ref_soft/r_misc";
+import { SetScreenshotWriter as SetGLScreenshotWriter } from "../ref_gl/gl_rmisc";
 import { GetRefAPI as GetRefAPI_Soft } from "../ref_soft/r_main";
 import { GetRefAPI as GetRefAPI_GL, SetGLimp } from "../ref_gl/gl_rmain";
 import { SetQGL } from "../ref_gl/gl_image";
@@ -312,6 +313,7 @@ VID_Init
 */
 export function VID_Init(): void {
   SetScreenshotWriter(VID_WriteScreenshot);
+  SetGLScreenshotWriter(VID_WriteScreenshot);
 
   // Create the video variables so we know how to start the graphics drivers.
   // vid_so.c picks "softx" when $DISPLAY is set and "soft" otherwise; this

@@ -43,7 +43,7 @@ ref_soft the same way a real driver's rejected mode does.
 import { PRINT_ALL } from "../shared/q_shared";
 import type { GLimp } from "../ref_gl/gl_rmain";
 import { ri, RserrT } from "../ref_gl/gl_local";
-import { SDL_AppActivate, SDLGL_CreateContext, SDLGL_CreateWindow, SDLGL_SetSwapInterval, SDLGL_Shutdown, SDLGL_SwapWindow } from "./sdl";
+import { SDL_AppActivate, SDLGL_CreateContext, SDLGL_CreateWindow, SDLGL_GetProcAddress, SDLGL_SetSwapInterval, SDLGL_Shutdown, SDLGL_SwapWindow } from "./sdl";
 
 export function GLimp_Init(hInstance: unknown, wndProc: unknown): boolean {
   return true; // the window is created by GLimp_SetMode, not here -- see SWimp_Init's identical note
@@ -114,5 +114,6 @@ export function CreateGLimp(): GLimp {
     AppActivate: GLimp_AppActivate,
     EnableLogging: GLimp_EnableLogging,
     LogNewFrame: GLimp_LogNewFrame,
+    GetProcAddress: SDLGL_GetProcAddress,
   };
 }

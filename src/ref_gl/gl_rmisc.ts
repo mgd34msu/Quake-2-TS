@@ -121,9 +121,29 @@ GL_ScreenShot_f
 ==================
 */
 export function GL_ScreenShot_f(): void {
-  // see file header comment: RefImports has no Sys_Mkdir/FS_WriteFile
-  // equivalent, so the buffer below is built but never reaches disk.
-  const picname = "quake00.tga";
+  // create the scrnshot directory / write the file: refimport_t has no
+  // Sys_Mkdir/fwrite equivalent, so the platform injects a writer, the
+  // same seam ref_soft's R_ScreenShot_f uses (see r_misc.ts).
+  if (!screenshotWriter) {
+    ri.Con_Printf(PRINT_ALL, "GL_ScreenShot_f: no screenshot writer registered\n");
+    return;
+  }
+
+  // find a file name to save it to
+  const gamedir = ri.FS_Gamedir();
+  let picname = "";
+  let checkname = "";
+  let slot = 0;
+  for (; slot <= 99; slot++) {
+    picname = `quake${(slot / 10) | 0}${slot % 10}.tga`;
+    checkname = `${gamedir}/scrnshot/${picname}`;
+    const probe = ri.FS_LoadFile(checkname);
+    if (probe.length === -1) break;
+  }
+  if (slot === 100) {
+    ri.Con_Printf(PRINT_ALL, "SCR_ScreenShot_f: Couldn't create a file\n");
+    return;
+  }
 
   const buffer = new Uint8Array(vid.width * vid.height * 3 + 18);
   buffer[2] = 2; // uncompressed type
@@ -143,7 +163,14 @@ export function GL_ScreenShot_f(): void {
     buffer[i + 2] = temp;
   }
 
+  screenshotWriter(checkname, buffer);
   ri.Con_Printf(PRINT_ALL, Com_sprintf("Wrote %s\n", picname));
+}
+
+export type ScreenshotWriterT = (path: string, data: Uint8Array) => void;
+let screenshotWriter: ScreenshotWriterT | null = null;
+export function SetScreenshotWriter(fn: ScreenshotWriterT | null): void {
+  screenshotWriter = fn;
 }
 
 /*

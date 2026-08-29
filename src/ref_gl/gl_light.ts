@@ -183,7 +183,7 @@ LIGHT SAMPLING
 
 let pointcolor: Vec3 = vec3();
 let lightplane: MplaneT | null = null; // used as shadow plane
-const lightspot: Vec3 = vec3();
+export const lightspot: Vec3 = vec3(); // gl_mesh.c reads this for shadow decal placement (extern vec3_t lightspot)
 
 function RecursiveLightPoint(node: MnodeOrLeaf, start: Vec3, end: Vec3): number {
   if (isMleaf(node)) return -1; // didn't hit anything

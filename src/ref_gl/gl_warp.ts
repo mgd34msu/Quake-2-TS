@@ -228,6 +228,17 @@ const r_turbsin: Float32Array = (() => {
   }
   return table;
 })();
+
+// gl_rmain.c's R_Init does `for (j=0; j<256; j++) r_turbsin[j] *= 0.5;` on
+// this table. In C each vid_restart reloads ref_gl.so with a fresh table, so
+// the halving happens exactly once per load; this statically-linked module
+// emulates that by recomputing from the formula, keeping repeated R_Init
+// calls idempotent instead of compounding the scale.
+export function R_ScaleTurbsinForRInit(): void {
+  for (let i = 0; i < 256; i++) {
+    r_turbsin[i] = 8 * Math.sin((i * 2 * Math.PI) / 256) * 0.5;
+  }
+}
 const TURBSCALE = 256.0 / (2 * Math.PI);
 
 /*
