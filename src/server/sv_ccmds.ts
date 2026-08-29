@@ -457,6 +457,7 @@ async function SV_ReadServerFile(): Promise<void> {
 
   // start a new game fresh with new cvars
   await SV_InitGame();
+  svs.mapcmd = mapcmd;
 
   svs.mapcmd = mapcmd;
 
@@ -475,7 +476,8 @@ Puts the server in demo mode on a specific map/cinematic
 ==================
 */
 async function SV_DemoMap_f(): Promise<void> {
-  await SV_Map(true, Cmd_Argv(1), false);
+  const map = Cmd_Argv(1); // capture before await (global tokenizer)
+  await SV_Map(true, map, false);
 }
 
 /*
@@ -530,11 +532,13 @@ async function SV_GameMap_f(): Promise<void> {
     }
   }
 
-  // start up the next map
-  await SV_Map(false, Cmd_Argv(1), false);
+  // start up the next map -- `map` was captured before any await; the
+  // command tokenizer is global and later commands retokenize it while an
+  // async handler is suspended (the corrupted-mapcmd autosave bug)
+  await SV_Map(false, map, false);
 
   // archive server state
-  svs.mapcmd = Cmd_Argv(1);
+  svs.mapcmd = map;
 
   // copy off the level to the autosave slot
   if (!dedicated || !dedicated.value) {
@@ -595,7 +599,7 @@ async function SV_Loadgame_f(): Promise<void> {
   }
 
   // make sure the server.ssv file exists
-  const name = `save/${Cmd_Argv(1)}/server.ssv`;
+  const name = `save/${dir}/server.ssv`;
   const open = FS_FOpenFile(name);
   if (!open) {
     Com_Printf("No such savegame: %s\n", `${FS_Gamedir()}/${name}`);
@@ -603,7 +607,7 @@ async function SV_Loadgame_f(): Promise<void> {
   }
   FS_FCloseFile(open.handle);
 
-  SV_CopySaveGame(Cmd_Argv(1), "current");
+  SV_CopySaveGame(dir, "current");
 
   await SV_ReadServerFile();
 

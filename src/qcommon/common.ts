@@ -253,9 +253,16 @@ export function Com_Error(code: number, fmt: string, ...args: Array<string | num
     throw new ComError(code, msg);
   } else if (code === ERR_DROP) {
     Com_Printf(`********************\nERROR: ${msg}\n********************\n`);
-    if (svShutdownHandler) svShutdownHandler(`Server crashed: ${msg}\n`, false);
-    if (clDropHandler) clDropHandler();
-    recursive = false;
+    // a handler that itself errors must not abort this unwind or leave the
+    // recursion latch set -- C's handlers cannot longjmp, ours can throw
+    try {
+      if (svShutdownHandler) svShutdownHandler(`Server crashed: ${msg}\n`, false);
+      if (clDropHandler) clDropHandler();
+    } catch (secondary) {
+      Com_Printf("Com_Error: secondary error during drop: %s\n", secondary instanceof Error ? secondary.message : String(secondary));
+    } finally {
+      recursive = false;
+    }
     throw new ComError(code, msg);
   }
 
