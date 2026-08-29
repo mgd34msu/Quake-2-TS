@@ -88,7 +88,7 @@ import { cl, cls, cl_entities, ConnstateT, CentityT, clCvars } from "./client";
 import { CL_InitInput, CL_SendCmd, IN_Commands, IN_Frame, IN_Init, Sys_SendKeyEvents } from "./cl_input";
 import { VID_Shutdown, VID_CheckChanges, VID_Front_f, VID_Init } from "../platform/vid";
 import { CL_PredictMovement } from "./cl_pred";
-import { CL_ClearEffects } from "./cl_fx";
+import { CL_RunDLights, CL_RunLightStyles, CL_ClearEffects } from "./cl_fx";
 import { CL_ClearTEnts } from "./cl_tent";
 import { S_StopAllSounds, S_Update, S_Init, S_Shutdown } from "./snd_dma";
 import { CL_RegisterSounds, CL_ParseClientinfo, CL_ParseServerMessage } from "./cl_parse";
@@ -1361,13 +1361,8 @@ export function CL_Frame(msec: number): void {
   CDAudio_Update();
 
   // advance local effects for next frame
-  // CL_RunDLights/CL_RunLightStyles (cl_fx.ts) -- see report: both are
-  // pending stubs too, called unconditionally by the C original right after
-  // CDAudio_Update; SCR_UpdateScreen above already throws first on every
-  // reachable call to this function, so the exact point these would also
-  // throw is unreachable under test regardless. Kept out of the import list
-  // to avoid two more always-throwing round trips; the call order gap is
-  // reported here rather than silently dropped.
+  CL_RunDLights();
+  CL_RunLightStyles();
   SCR_RunCinematic();
   SCR_RunConsole();
 

@@ -217,7 +217,9 @@ export function GL_SetDefaultState(): void {
 
   GL_TexEnv(GL_REPLACE);
 
-  if (Boolean(qgl.qglPointParameterfEXT)) {
+  const pointParameterf = qgl.qglPointParameterfEXT;
+  const pointParameterfv = qgl.qglPointParameterfvEXT;
+  if (pointParameterf && pointParameterfv) {
     const attenuations = new Float32Array(3);
 
     attenuations[0] = glCvars.gl_particle_att_a ? glCvars.gl_particle_att_a.value : 0;
@@ -225,9 +227,9 @@ export function GL_SetDefaultState(): void {
     attenuations[2] = glCvars.gl_particle_att_c ? glCvars.gl_particle_att_c.value : 0;
 
     qgl.qglEnable(GL_POINT_SMOOTH);
-    qgl.qglPointParameterfEXT(GL_POINT_SIZE_MIN_EXT, glCvars.gl_particle_min_size ? glCvars.gl_particle_min_size.value : 0);
-    qgl.qglPointParameterfEXT(GL_POINT_SIZE_MAX_EXT, glCvars.gl_particle_max_size ? glCvars.gl_particle_max_size.value : 0);
-    qgl.qglPointParameterfvEXT(GL_DISTANCE_ATTENUATION_EXT, attenuations);
+    pointParameterf(GL_POINT_SIZE_MIN_EXT, glCvars.gl_particle_min_size ? glCvars.gl_particle_min_size.value : 0);
+    pointParameterf(GL_POINT_SIZE_MAX_EXT, glCvars.gl_particle_max_size ? glCvars.gl_particle_max_size.value : 0);
+    pointParameterfv(GL_DISTANCE_ATTENUATION_EXT, attenuations);
   }
 
   if (Boolean(qgl.qglColorTableEXT) && glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value) {

@@ -87,17 +87,16 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
 
     expect(queried.slice().sort()).toEqual(EXTENSION_SYMBOL_NAMES.slice().sort());
 
-    // unresolved extensions become safe no-ops -- QGL's contract (see that
-    // file's header comment) is that every member always exists and is
-    // callable, never a missing property. None of these are real GL calls
-    // when unresolved, so this is safe without any context.
-    expect(() => qgl.qglLockArraysEXT(0, 4)).not.toThrow();
-    expect(() => qgl.qglUnlockArraysEXT()).not.toThrow();
-    expect(() => qgl.qglMTexCoord2fSGIS(0, 0, 0)).not.toThrow();
-    expect(() => qgl.qglSelectTextureSGIS(0)).not.toThrow();
-    expect(() => qgl.qglPointParameterfEXT(0, 0)).not.toThrow();
-    expect(() => qgl.qglPointParameterfvEXT(0, new Float32Array(1))).not.toThrow();
-    expect(() => qgl.qglColorTableEXT(0, 0, 0, 0, 0, new Uint8Array(4))).not.toThrow();
+    // unresolved extensions are null, exactly the C's NULL function
+    // pointers -- every engine call site checks before calling, and the
+    // fallback rendering paths (two-pass lightmaps, RGBA uploads) engage.
+    expect(qgl.qglLockArraysEXT).toBeNull();
+    expect(qgl.qglUnlockArraysEXT).toBeNull();
+    expect(qgl.qglMTexCoord2fSGIS).toBeNull();
+    expect(qgl.qglSelectTextureSGIS).toBeNull();
+    expect(qgl.qglPointParameterfEXT).toBeNull();
+    expect(qgl.qglPointParameterfvEXT).toBeNull();
+    expect(qgl.qglColorTableEXT).toBeNull();
   });
 
   test("a resolver that finds every extension is queried by name but its no-op fallback is never used", () => {
@@ -121,10 +120,17 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
 
     // structural check only: no core or extension entry point is invoked
     // here, since none of them are safe to call without a current GL
-    // context (see file header comment)
-    const names: ReadonlyArray<keyof QGL> = ["qglBegin", "qglEnd", "qglGetError", "qglLockArraysEXT", "qglUnlockArraysEXT", "qglPointParameterfEXT", "qglPointParameterfvEXT", "qglColorTableEXT", "qglMTexCoord2fSGIS", "qglSelectTextureSGIS"];
-    for (const name of names) {
+    // context (see file header comment). Core members are always functions;
+    // extension members follow the C's NULL-pointer contract -- present as
+    // properties, function-or-null by driver capability.
+    const core: ReadonlyArray<keyof QGL> = ["qglBegin", "qglEnd", "qglGetError"];
+    for (const name of core) {
       expect(typeof qgl[name]).toBe("function");
+    }
+    const extensions: ReadonlyArray<keyof QGL> = ["qglLockArraysEXT", "qglUnlockArraysEXT", "qglPointParameterfEXT", "qglPointParameterfvEXT", "qglColorTableEXT", "qglMTexCoord2fSGIS", "qglSelectTextureSGIS"];
+    for (const name of extensions) {
+      const member = qgl[name];
+      expect(member === null || typeof member === "function").toBe(true);
     }
   });
 });

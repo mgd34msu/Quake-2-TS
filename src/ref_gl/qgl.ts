@@ -57,7 +57,9 @@ export interface QGL {
   qglColor4fv(v: GLPointer): void;
   qglColor4ubv(v: GLPointer): void;
   qglColorPointer(size: number, type: number, stride: number, pointer: GLPointer): void;
-  qglColorTableEXT(target: number, internalformat: number, width: number, format: number, type: number, table: GLPointer): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglColorTableEXT: ((target: number, internalformat: number, width: number, format: number, type: number, table: GLPointer) => void) | null;
   qglCullFace(mode: number): void;
   qglDeleteTextures(n: number, textures: GLPointer): void;
   qglDepthFunc(func: number): void;
@@ -75,12 +77,20 @@ export interface QGL {
   qglGetString(name: number): Pointer | null;
   qglLoadIdentity(): void;
   qglLoadMatrixf(m: GLPointer): void;
-  qglLockArraysEXT(first: number, count: number): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglLockArraysEXT: ((first: number, count: number) => void) | null;
   qglMatrixMode(mode: number): void;
-  qglMTexCoord2fSGIS(target: number, s: number, t: number): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglMTexCoord2fSGIS: ((target: number, s: number, t: number) => void) | null;
   qglOrtho(left: number, right: number, bottom: number, top: number, zNear: number, zFar: number): void;
-  qglPointParameterfEXT(param: number, value: number): void;
-  qglPointParameterfvEXT(param: number, value: GLPointer): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglPointParameterfEXT: ((param: number, value: number) => void) | null;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglPointParameterfvEXT: ((param: number, value: GLPointer) => void) | null;
   qglPointSize(size: number): void;
   qglPolygonMode(face: number, mode: number): void;
   qglPopMatrix(): void;
@@ -89,7 +99,9 @@ export interface QGL {
   qglRotatef(angle: number, x: number, y: number, z: number): void;
   qglScalef(x: number, y: number, z: number): void;
   qglScissor(x: number, y: number, width: number, height: number): void;
-  qglSelectTextureSGIS(target: number): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglSelectTextureSGIS: ((target: number) => void) | null;
   qglShadeModel(mode: number): void;
   qglTexCoord2f(s: number, t: number): void;
   qglTexEnvf(target: number, pname: number, param: number): void;
@@ -97,7 +109,9 @@ export interface QGL {
   qglTexParameterf(target: number, pname: number, param: number): void;
   qglTexSubImage2D(target: number, level: number, xoffset: number, yoffset: number, width: number, height: number, format: number, type: number, pixels: GLPointer): void;
   qglTranslatef(x: number, y: number, z: number): void;
-  qglUnlockArraysEXT(): void;
+  // C function pointer: NULL when the driver lacks the extension --
+  // every caller must check, exactly like the C
+  qglUnlockArraysEXT: (() => void) | null;
   qglVertex2f(x: number, y: number): void;
   qglVertex3f(x: number, y: number, z: number): void;
   qglVertex3fv(v: GLPointer): void;
@@ -166,9 +180,9 @@ export class QGLRecording implements QGL {
   qglColorPointer(size: number, type: number, stride: number, pointer: GLPointer): void {
     this.record("qglColorPointer", [size, type, stride, pointer]);
   }
-  qglColorTableEXT(target: number, internalformat: number, width: number, format: number, type: number, table: GLPointer): void {
+  qglColorTableEXT = (target: number, internalformat: number, width: number, format: number, type: number, table: GLPointer): void => {
     this.record("qglColorTableEXT", [target, internalformat, width, format, type, table]);
-  }
+  };
   qglCullFace(mode: number): void {
     this.record("qglCullFace", [mode]);
   }
@@ -222,24 +236,24 @@ export class QGLRecording implements QGL {
   qglLoadMatrixf(m: GLPointer): void {
     this.record("qglLoadMatrixf", [m]);
   }
-  qglLockArraysEXT(first: number, count: number): void {
+  qglLockArraysEXT = (first: number, count: number): void => {
     this.record("qglLockArraysEXT", [first, count]);
-  }
+  };
   qglMatrixMode(mode: number): void {
     this.record("qglMatrixMode", [mode]);
   }
-  qglMTexCoord2fSGIS(target: number, s: number, t: number): void {
+  qglMTexCoord2fSGIS = (target: number, s: number, t: number): void => {
     this.record("qglMTexCoord2fSGIS", [target, s, t]);
-  }
+  };
   qglOrtho(left: number, right: number, bottom: number, top: number, zNear: number, zFar: number): void {
     this.record("qglOrtho", [left, right, bottom, top, zNear, zFar]);
   }
-  qglPointParameterfEXT(param: number, value: number): void {
+  qglPointParameterfEXT = (param: number, value: number): void => {
     this.record("qglPointParameterfEXT", [param, value]);
-  }
-  qglPointParameterfvEXT(param: number, value: GLPointer): void {
+  };
+  qglPointParameterfvEXT = (param: number, value: GLPointer): void => {
     this.record("qglPointParameterfvEXT", [param, value]);
-  }
+  };
   qglPointSize(size: number): void {
     this.record("qglPointSize", [size]);
   }
@@ -264,9 +278,11 @@ export class QGLRecording implements QGL {
   qglScissor(x: number, y: number, width: number, height: number): void {
     this.record("qglScissor", [x, y, width, height]);
   }
-  qglSelectTextureSGIS(target: number): void {
+  // bound arrow properties (not methods): engine call sites capture these
+  // like C function pointers, detaching them from the instance
+  qglSelectTextureSGIS = (target: number): void => {
     this.record("qglSelectTextureSGIS", [target]);
-  }
+  };
   qglShadeModel(mode: number): void {
     this.record("qglShadeModel", [mode]);
   }
@@ -288,9 +304,9 @@ export class QGLRecording implements QGL {
   qglTranslatef(x: number, y: number, z: number): void {
     this.record("qglTranslatef", [x, y, z]);
   }
-  qglUnlockArraysEXT(): void {
+  qglUnlockArraysEXT = (): void => {
     this.record("qglUnlockArraysEXT", []);
-  }
+  };
   qglVertex2f(x: number, y: number): void {
     this.record("qglVertex2f", [x, y]);
   }
@@ -583,7 +599,7 @@ export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
     qglColor4fv: (v) => s.glColor4fv(v),
     qglColor4ubv: (v) => s.glColor4ubv(v),
     qglColorPointer: (size, type, stride, pointer) => s.glColorPointer(size, type, stride, pointer),
-    qglColorTableEXT: glColorTableEXT ? (target, internalformat, width, format, type, table) => glColorTableEXT(target, internalformat, width, format, type, table) : () => {},
+    qglColorTableEXT: glColorTableEXT ? (target, internalformat, width, format, type, table) => glColorTableEXT(target, internalformat, width, format, type, table) : null,
     qglCullFace: (mode) => s.glCullFace(mode),
     qglDeleteTextures: (n, textures) => s.glDeleteTextures(n, textures),
     qglDepthFunc: (func) => s.glDepthFunc(func),
@@ -609,12 +625,12 @@ export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
     },
     qglLoadIdentity: () => s.glLoadIdentity(),
     qglLoadMatrixf: (m) => s.glLoadMatrixf(m),
-    qglLockArraysEXT: glLockArraysEXT ? (first, count) => glLockArraysEXT(first, count) : () => {},
+    qglLockArraysEXT: glLockArraysEXT ? (first, count) => glLockArraysEXT(first, count) : null,
     qglMatrixMode: (mode) => s.glMatrixMode(mode),
-    qglMTexCoord2fSGIS: glMTexCoord2fSGIS ? (target, sVal, tVal) => glMTexCoord2fSGIS(target, sVal, tVal) : () => {},
+    qglMTexCoord2fSGIS: glMTexCoord2fSGIS ? (target, sVal, tVal) => glMTexCoord2fSGIS(target, sVal, tVal) : null,
     qglOrtho: (left, right, bottom, top, zNear, zFar) => s.glOrtho(left, right, bottom, top, zNear, zFar),
-    qglPointParameterfEXT: glPointParameterfEXT ? (param, value) => glPointParameterfEXT(param, value) : () => {},
-    qglPointParameterfvEXT: glPointParameterfvEXT ? (param, value) => glPointParameterfvEXT(param, value) : () => {},
+    qglPointParameterfEXT: glPointParameterfEXT ? (param, value) => glPointParameterfEXT(param, value) : null,
+    qglPointParameterfvEXT: glPointParameterfvEXT ? (param, value) => glPointParameterfvEXT(param, value) : null,
     qglPointSize: (size) => s.glPointSize(size),
     qglPolygonMode: (face, mode) => s.glPolygonMode(face, mode),
     qglPopMatrix: () => s.glPopMatrix(),
@@ -623,7 +639,7 @@ export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
     qglRotatef: (angle, x, y, z) => s.glRotatef(angle, x, y, z),
     qglScalef: (x, y, z) => s.glScalef(x, y, z),
     qglScissor: (x, y, width, height) => s.glScissor(x, y, width, height),
-    qglSelectTextureSGIS: glSelectTextureSGIS ? (target) => glSelectTextureSGIS(target) : () => {},
+    qglSelectTextureSGIS: glSelectTextureSGIS ? (target) => glSelectTextureSGIS(target) : null,
     qglShadeModel: (mode) => s.glShadeModel(mode),
     qglTexCoord2f: (sVal, tVal) => s.glTexCoord2f(sVal, tVal),
     qglTexEnvf: (target, pname, param) => s.glTexEnvf(target, pname, param),
@@ -633,7 +649,7 @@ export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
     qglTexSubImage2D: (target, level, xoffset, yoffset, width, height, format, type, pixels) =>
       s.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels),
     qglTranslatef: (x, y, z) => s.glTranslatef(x, y, z),
-    qglUnlockArraysEXT: glUnlockArraysEXT ? () => glUnlockArraysEXT() : () => {},
+    qglUnlockArraysEXT: glUnlockArraysEXT ? () => glUnlockArraysEXT() : null,
     qglVertex2f: (x, y) => s.glVertex2f(x, y),
     qglVertex3f: (x, y, z) => s.glVertex3f(x, y, z),
     qglVertex3fv: (v) => s.glVertex3fv(v),

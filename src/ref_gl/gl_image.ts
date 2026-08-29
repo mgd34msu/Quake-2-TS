@@ -196,8 +196,9 @@ export function GL_SetTexturePalette(palette: Uint32Array): void {
     temptable[i * 3 + 2] = (palette[i] >>> 16) & 0xff;
   }
 
-  if (glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value) {
-    qgl.qglColorTableEXT(GL_SHARED_TEXTURE_PALETTE_EXT, GL_RGB, 256, GL_RGB, GL_UNSIGNED_BYTE, temptable);
+  const colorTable = qgl.qglColorTableEXT;
+  if (colorTable && glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value) {
+    colorTable(GL_SHARED_TEXTURE_PALETTE_EXT, GL_RGB, 256, GL_RGB, GL_UNSIGNED_BYTE, temptable);
   }
 }
 
@@ -207,6 +208,7 @@ GL_EnableMultitexture / GL_SelectTexture / GL_TexEnv
 ===============
 */
 export function GL_EnableMultitexture(enable: boolean): void {
+  if (!qgl.qglSelectTextureSGIS) return; // C: if ( !qglSelectTextureSGIS ) return;
   if (enable) {
     GL_SelectTexture(GL_TEXTURE1_SGIS);
     qgl.qglEnable(GL_TEXTURE_2D);
@@ -221,10 +223,12 @@ export function GL_EnableMultitexture(enable: boolean): void {
 }
 
 export function GL_SelectTexture(texture: number): void {
+  const selectTexture = qgl.qglSelectTextureSGIS;
+  if (!selectTexture) return; // C: if ( !qglSelectTextureSGIS ) return;
   const tmu = texture === GL_TEXTURE0_SGIS ? 0 : 1;
   if (tmu === gl_state.currenttmu) return;
   gl_state.currenttmu = tmu;
-  qgl.qglSelectTextureSGIS(tmu === 0 ? GL_TEXTURE0_SGIS : GL_TEXTURE1_SGIS);
+  selectTexture(tmu === 0 ? GL_TEXTURE0_SGIS : GL_TEXTURE1_SGIS);
 }
 
 const lastmodes: [number, number] = [-1, -1];
@@ -897,7 +901,7 @@ function GL_Upload32(data: Uint32Array, width: number, height: number, mipmap: b
     comp = samples;
   }
 
-  const wantPaletted = (): boolean => Boolean(glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value && samples === gl_solid_format);
+  const wantPaletted = (): boolean => Boolean(qgl.qglColorTableEXT && glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value && samples === gl_solid_format);
 
   if (scaled_width === width && scaled_height === height && !mipmap) {
     if (wantPaletted()) {
@@ -970,7 +974,7 @@ export function GL_Upload8(data: Uint8Array, width: number, height: number, mipm
     ri.Sys_Error(ERR_DROP, "GL_Upload8: too large");
   }
 
-  if (glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value && is_sky) {
+  if (qgl.qglColorTableEXT && glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value && is_sky) {
     qgl.qglTexImage2D(GL_TEXTURE_2D, 0, GL_COLOR_INDEX8_EXT, width, height, 0, GL_COLOR_INDEX, GL_UNSIGNED_BYTE, data);
     qgl.qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_max);
     qgl.qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);

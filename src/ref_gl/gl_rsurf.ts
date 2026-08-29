@@ -573,6 +573,10 @@ function DrawTextureChains(): void {
 }
 
 function drawMultitexturedChain(surf: MsurfaceT, nv: number): void {
+  // only reached from GL_RenderLightmappedPoly, which already verified the
+  // extension pointer (C calls through it blindly here)
+  const mtexCoord = qgl.qglMTexCoord2fSGIS;
+  if (!mtexCoord) return;
   const flowing = surf.texinfo !== null && (surf.texinfo.flags & SURF_FLOWING) !== 0;
   let scroll = 0;
   if (flowing) {
@@ -584,8 +588,8 @@ function drawMultitexturedChain(surf: MsurfaceT, nv: number): void {
     qgl.qglBegin(GL_POLYGON);
     for (let i = 0; i < nv; i++) {
       const v = p.verts[i];
-      qgl.qglMTexCoord2fSGIS(GL_TEXTURE0_SGIS, v[3] + scroll, v[4]);
-      qgl.qglMTexCoord2fSGIS(GL_TEXTURE1_SGIS, v[5], v[6]);
+      mtexCoord(GL_TEXTURE0_SGIS, v[3] + scroll, v[4]);
+      mtexCoord(GL_TEXTURE1_SGIS, v[5], v[6]);
       qgl.qglVertex3fv(v);
     }
     qgl.qglEnd();
@@ -593,6 +597,9 @@ function drawMultitexturedChain(surf: MsurfaceT, nv: number): void {
 }
 
 function GL_RenderLightmappedPoly(surf: MsurfaceT): void {
+  // only called from branches that verified qglMTexCoord2fSGIS (C calls blindly)
+  const mtexCoord = qgl.qglMTexCoord2fSGIS;
+  if (!mtexCoord) return;
   const nv = surf.polys ? surf.polys.numverts : 0;
   const image = R_TextureAnimation(surf.texinfo);
   let lmtex = surf.lightmaptexturenum;

@@ -633,9 +633,9 @@ export function Pickup_Armor(ent: EdictT, other: EdictT): boolean {
   const item = ent.item;
   if (client === null || item === null) return false;
 
-  // get info on new armor
-  const newinfo = asArmorInfo(item.info);
-
+  // C only casts here (newinfo = (gitem_armor_t *)ent->item->info) and the
+  // shard branch never dereferences it -- shards carry no info. Narrow
+  // lazily in the branches that read it, like the C pointer's actual use.
   const old_armor_index = ArmorIndex(other);
 
   // handle armor shards specially
@@ -645,10 +645,11 @@ export function Pickup_Armor(ent: EdictT, other: EdictT): boolean {
   }
   // if player has no armor, just use it
   else if (old_armor_index === 0) {
-    client.pers.inventory[ITEM_INDEX(item)] = newinfo.base_count;
+    client.pers.inventory[ITEM_INDEX(item)] = asArmorInfo(item.info).base_count;
   }
   // use the better armor
   else {
+    const newinfo = asArmorInfo(item.info);
     // get info on old armor
     let oldinfo: GitemArmorT;
     if (old_armor_index === gameIndices.jacket_armor_index) oldinfo = jacketarmor_info;
