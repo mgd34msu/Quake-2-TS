@@ -40,6 +40,7 @@ import {
   CHAN_BODY,
   CHAN_VOICE,
   ATTN_NORM,
+  CS_GENERAL,
   CS_PLAYERSKINS,
   DF_FIXED_FOV,
   DF_FORCE_RESPAWN,
@@ -50,6 +51,7 @@ import {
 } from "../shared/q_shared";
 import { PendingPort } from "../qcommon/pending";
 import { type Edict, type GTraceT, SolidT, SVF_DEADMONSTER, SVF_NOCLIENT } from "./game";
+import { SV_FilterPacket } from "./g_svcmds";
 import {
   ANIM_DEATH,
   BODY_QUEUE_SIZE,
@@ -788,6 +790,7 @@ export function player_die(self: EdictT, inflictor: EdictT, attacker: EdictT, da
     self.client.invincible_framenum = 0;
     self.client.breather_framenum = 0;
     self.client.enviro_framenum = 0;
+    self.flags &= ~FL_POWER_ARMOR;
 
     // clear inventory
     self.client.pers.inventory.fill(0);
@@ -1368,11 +1371,15 @@ export function ClientBeginDeathmatch(ent: EdictT): void {
   // locate ent at a spawn point
   PutClientInServer(ent);
 
-  // send effect
-  gi.WriteByte(svc_muzzleflash);
-  gi.WriteShort(EDICT_NUM(ent));
-  gi.WriteByte(MZ_LOGIN);
-  gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
+  if (level.intermissiontime !== 0) {
+    MoveClientToIntermission(ent);
+  } else {
+    // send effect
+    gi.WriteByte(svc_muzzleflash);
+    gi.WriteShort(EDICT_NUM(ent));
+    gi.WriteByte(MZ_LOGIN);
+    gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
+  }
 
   if (ent.client !== null) {
     gi.bprintf(PRINT_HIGH, `${ent.client.pers.netname} entered the game\n`);
@@ -1475,6 +1482,9 @@ export function ClientUserinfoChanged(entIn: Edict, userinfoIn: string): void {
     gi.configstring(CS_PLAYERSKINS + playernum, `${client.pers.netname}\\${s}`);
   }
 
+  // set player name field (used in id_state view)
+  gi.configstring(CS_GENERAL + playernum, client.pers.netname);
+
   // fov
   if (cvarNum(gameCvars.deathmatch) !== 0 && ((cvarNum(gameCvars.dmflags) | 0) & DF_FIXED_FOV) !== 0) {
     client.ps.fov = 90;
@@ -1512,6 +1522,10 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
 
   // check to see if they are on the banned IP list
   let value = Info_ValueForKey(userinfo, "ip");
+  if (SV_FilterPacket(value)) {
+    userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Banned.");
+    return { allowed: false, userinfo };
+  }
 
   // check for a password
   value = Info_ValueForKey(userinfo, "password");
@@ -1531,7 +1545,7 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
     // clear the respawning variables
     // force team join
     client.resp.ctf_team = -1;
-    client.resp.id_state = false;
+    client.resp.id_state = true;
     InitClientResp(client);
     if (!game.autosaved || client.pers.weapon === null) InitClientPersistant(client);
   }

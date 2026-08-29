@@ -29,9 +29,10 @@ import {
 } from "../src/ctf/g_local";
 import { CTFInit, CTFJoinTeam, CTFSpawn, CtfTeamT } from "../src/ctf/g_ctf";
 import { ClientBegin, ClientConnect, player_die } from "../src/ctf/p_client";
+import { ipFilterList } from "../src/ctf/g_svcmds";
 import { ITEM_INDEX, FindItemByClassname, InitItems } from "../src/ctf/g_items";
 import { vec3 } from "../src/shared/math";
-import { CplaneT, CvarT } from "../src/shared/q_shared";
+import { CplaneT, CvarT, Info_ValueForKey } from "../src/shared/q_shared";
 
 // ---------------------------------------------------------------------------
 // fake GameImports -- records WriteByte/WriteString calls and serves queued
@@ -187,6 +188,10 @@ function setupWorld(): Recorder {
   gameCvars.password!.string = "";
   gameCvars.spectator_password = fakeCvar(0);
   gameCvars.spectator_password!.string = "";
+  // 3.21 restores ipfilter (see ctf/g_svcmds.c); ClientConnect now calls
+  // SV_FilterPacket, which reads this cvar. Default "1" matches InitGame's
+  // real `gi.cvar("filterban", "1", 0)` registration.
+  gameCvars.filterban = fakeCvar(1);
 
   globals.num_edicts = MAXCLIENTS + 1;
 
@@ -251,6 +256,23 @@ describe("ClientConnect/ClientBegin ctf join flow", () => {
     // into the map.
     expect(ent.movetype).toBe(MovetypeT.MOVETYPE_NOCLIP);
     expect(ent.solid).toBe(SolidT.SOLID_NOT);
+  });
+
+  // ctf/p_client.c's 3.21 delta adds the ipfilter check ClientConnect had
+  // never had in this fork (ctf/g_svcmds.c dropped the whole subsystem in
+  // 3.19; 3.21 restores it -- see src/ctf/g_svcmds.ts).
+  test("a banned IP is rejected with a 'Banned.' rejmsg and never reaches ClientBegin", () => {
+    setupWorld();
+    ipFilterList.filters.push({ mask: 0xffffffff, compare: (10 | (0 << 8) | (0 << 16) | (1 << 24)) >>> 0 });
+
+    const entStub = g_edicts[1];
+    entStub.s.number = 1;
+    const result = ClientConnect(entStub, "\\name\\intruder\\skin\\male/grunt\\ip\\10.0.0.1");
+
+    expect(result.allowed).toBe(false);
+    expect(Info_ValueForKey(result.userinfo, "rejmsg")).toBe("Banned.");
+
+    ipFilterList.clear();
   });
 });
 

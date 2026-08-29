@@ -1228,6 +1228,7 @@ export function InitGame(): void {
   gameCvars.instantweap = gi.cvar("instantweap", "0", CVAR_SERVERINFO);
   //ZOID
   gameCvars.password = gi.cvar("password", "", CVAR_USERINFO);
+  gameCvars.filterban = gi.cvar("filterban", "1", 0);
 
   gameCvars.g_select_empty = gi.cvar("g_select_empty", "0", CVAR_ARCHIVE);
 

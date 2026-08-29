@@ -84,7 +84,7 @@ import { T_Damage } from "./g_combat";
 import { PowerArmorType } from "./g_items";
 import { DeathmatchScoreboardMessage, G_SetStats } from "./p_hud";
 import { PlayerNoise } from "./p_weapon";
-import { CTFEffects, CtfGrapplestateT } from "./g_ctf";
+import { CTFEffects, CTFSetPowerUpEffect, CtfGrapplestateT } from "./g_ctf";
 import { PMenu_Do_Update } from "./p_menu";
 
 // a per-file local mirrors other units' own cvarNum (module-local
@@ -707,14 +707,14 @@ export function G_SetClientEffects(ent: EdictT): void {
 
   const client = ent.client;
   if (client !== null) {
-    if (client.quad_framenum > level.framenum && (level.framenum & 8) !== 0) {
+    if (client.quad_framenum > level.framenum) {
       const remaining = client.quad_framenum - level.framenum;
-      if (remaining > 30 || (remaining & 4) !== 0) ent.s.effects |= EF_QUAD;
+      if (remaining > 30 || (remaining & 4) !== 0) CTFSetPowerUpEffect(ent, EF_QUAD);
     }
 
-    if (client.invincible_framenum > level.framenum && (level.framenum & 8) !== 0) {
+    if (client.invincible_framenum > level.framenum) {
       const remaining = client.invincible_framenum - level.framenum;
-      if (remaining > 30 || (remaining & 4) !== 0) ent.s.effects |= EF_PENT;
+      if (remaining > 30 || (remaining & 4) !== 0) CTFSetPowerUpEffect(ent, EF_PENT);
     }
   }
 

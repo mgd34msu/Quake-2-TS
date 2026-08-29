@@ -467,8 +467,6 @@ function Weapon_Generic2(
     if (client.ps.gunframe === FRAME_ACTIVATE_LAST || cvarNum(gameCvars.instantweap) !== 0) {
       client.weaponstate = WeaponstateT.WEAPON_READY;
       client.ps.gunframe = FRAME_IDLE_FIRST;
-      // we go recursive here to instant ready the weapon
-      Weapon_Generic2(ent, FRAME_ACTIVATE_LAST, FRAME_FIRE_LAST, FRAME_IDLE_LAST, FRAME_DEACTIVATE_LAST, pause_frames, fire_frames, fire);
       return;
     }
 
@@ -1301,6 +1299,14 @@ function weapon_bfg_fire(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 
+  // C: `vec3_t offset, start;` declared at the top of the function; the
+  // gunframe===9 branch below reads `start` before it is ever assigned by
+  // P_ProjectSource further down (a genuine upstream 3.21 bug -- it reads
+  // whatever the C stack happened to hold). A zero vector is the closest
+  // deterministic TS stand-in for that uninitialized read; see this unit's
+  // report.
+  const start = vec3();
+
   const damage_radius = 1000;
   let damage = cvarNum(gameCvars.deathmatch) ? 200 : 500;
 
@@ -1313,7 +1319,7 @@ function weapon_bfg_fire(ent: EdictT): void {
 
     client.ps.gunframe++;
 
-    PlayerNoise(ent, ent.s.origin, PNOISE_WEAPON);
+    PlayerNoise(ent, start, PNOISE_WEAPON);
     return;
   }
 
@@ -1338,7 +1344,6 @@ function weapon_bfg_fire(ent: EdictT): void {
   client.v_dmg_time = level.time + DAMAGE_TIME;
 
   const offset = vec3(8, 8, ent.viewheight - 8);
-  const start = vec3();
   P_ProjectSource(client, ent.s.origin, offset, forward, right, start);
   fire_bfg(ent, start, forward, damage, 400, damage_radius);
 

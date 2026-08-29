@@ -300,7 +300,7 @@ describe("ClientCommand \"team\" dispatches into g_ctf.ts's CTFTeam_f", () => {
     ClientCommand(ent);
 
     expect(recorded.cprintf.length).toBe(1);
-    expect(recorded.cprintf[0][2]).toContain("UKNOWN team");
+    expect(recorded.cprintf[0][2]).toContain("UNKNOWN team");
   });
 });
 

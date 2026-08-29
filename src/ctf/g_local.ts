@@ -629,6 +629,7 @@ export class ClientRespawnT {
   ctf_flagsince = 0;
   ctf_lastfraggedcarrier = 0;
   id_state = false;
+  lastidtime = 0;
   voted = false; // for elections
   ready = false;
   admin = false;

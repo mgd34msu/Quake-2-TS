@@ -136,6 +136,7 @@ import {
   SP_target_temp_entity,
 } from "./g_target";
 import {
+  CTFPrecache,
   CTFSpawn,
   ctf_statusbar,
   SP_info_player_team1,
@@ -797,13 +798,7 @@ export function SP_worldspawn(ent: EdictT): void {
     if (ctfCvar() !== 0) {
       gi.configstring(CS_STATUSBAR, ctf_statusbar);
       // precaches
-      gi.imageindex("i_ctf1");
-      gi.imageindex("i_ctf2");
-      gi.imageindex("i_ctf1d");
-      gi.imageindex("i_ctf2d");
-      gi.imageindex("i_ctf1t");
-      gi.imageindex("i_ctf2t");
-      gi.imageindex("i_ctfj");
+      CTFPrecache();
     } else {
       gi.configstring(CS_STATUSBAR, dm_statusbar);
     }
@@ -859,9 +854,21 @@ export function SP_worldspawn(ent: EdictT): void {
   gi.soundindex("*pain100_1.wav");
   gi.soundindex("*pain100_2.wav");
 
-  // sexed-models precache block dropped: ctf/g_spawn.c wraps this whole
-  // block (plus its own "#w_grapple.md2" line) in `#if 0 //DISABLED`, per
-  // PORTING.md's #if 0 ruling.
+  // sexed models
+  // THIS ORDER MUST MATCH THE DEFINES IN g_local.h
+  // you can add more, max 15
+  gi.modelindex("#w_blaster.md2");
+  gi.modelindex("#w_shotgun.md2");
+  gi.modelindex("#w_sshotgun.md2");
+  gi.modelindex("#w_machinegun.md2");
+  gi.modelindex("#w_chaingun.md2");
+  gi.modelindex("#a_grenades.md2");
+  gi.modelindex("#w_glauncher.md2");
+  gi.modelindex("#w_rlauncher.md2");
+  gi.modelindex("#w_hyperblaster.md2");
+  gi.modelindex("#w_railgun.md2");
+  gi.modelindex("#w_bfg.md2");
+  gi.modelindex("#w_grapple.md2");
 
   //-------------------
 

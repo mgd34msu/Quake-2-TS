@@ -238,13 +238,13 @@ describe("CTFTeamName / CTFOtherTeamName / CTFOtherTeam -- pure helpers", () => 
   test("CTFTeamName maps team constants to display names", () => {
     expect(CTFTeamName(CtfTeamT.CTF_TEAM1)).toBe("RED");
     expect(CTFTeamName(CtfTeamT.CTF_TEAM2)).toBe("BLUE");
-    expect(CTFTeamName(CtfTeamT.CTF_NOTEAM)).toBe("UKNOWN");
+    expect(CTFTeamName(CtfTeamT.CTF_NOTEAM)).toBe("UNKNOWN");
   });
 
   test("CTFOtherTeamName is the inverse mapping", () => {
     expect(CTFOtherTeamName(CtfTeamT.CTF_TEAM1)).toBe("BLUE");
     expect(CTFOtherTeamName(CtfTeamT.CTF_TEAM2)).toBe("RED");
-    expect(CTFOtherTeamName(CtfTeamT.CTF_NOTEAM)).toBe("UKNOWN");
+    expect(CTFOtherTeamName(CtfTeamT.CTF_NOTEAM)).toBe("UNKNOWN");
   });
 
   test("CTFOtherTeam swaps team constants and rejects CTF_NOTEAM", () => {

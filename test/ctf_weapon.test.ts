@@ -192,7 +192,7 @@ const GRAPPLE_FRAMES = { activateLast: 5, fireLast: 9, idleLast: 31, deactivateL
 // ---------------------------------------------------------------------------
 
 describe("Weapon_Generic ctf delta -- instantweap", () => {
-  test("instantweap=1 activates the weapon in one call regardless of gunframe, then re-runs the READY frame", () => {
+  test("instantweap=1 activates the weapon in one call regardless of gunframe", () => {
     const soundLog: RecordedSound[] = [];
     setupWorld(soundLog);
     const ent = makePlayer(1);
@@ -214,11 +214,13 @@ describe("Weapon_Generic ctf delta -- instantweap", () => {
     );
 
     // base game would leave weaponstate ACTIVATING (gunframe 0 != 4) and only
-    // gunframe++ once; instantweap forces READY immediately, then the
-    // recursive Weapon_Generic2 call advances the idle frame once more
-    // (FRAME_IDLE_FIRST=9 -> 10) inside the same Weapon_Generic invocation.
+    // gunframe++ once; instantweap forces READY immediately and sets
+    // gunframe to FRAME_IDLE_FIRST (9). 3.21 dropped the recursive
+    // Weapon_Generic2 call this ctf fork used to make here (a self-inflicted
+    // double-advance bug in 3.19/3.20 -- see ctf/p_weapon.c's 3.21 diff), so
+    // gunframe no longer advances a second time within this call.
     expect(client.weaponstate).toBe(WeaponstateT.WEAPON_READY);
-    expect(client.ps.gunframe).toBe(10);
+    expect(client.ps.gunframe).toBe(9);
   });
 
   test("instantweap=0 (default) preserves the base-game step-by-step activation", () => {

@@ -11,12 +11,14 @@ import {
   ATTN_NONE,
   ATTN_NORM,
   BUTTON_ATTACK,
+  CHAN_AUTO,
   CHAN_NO_PHS_ADD,
   CHAN_RELIABLE,
   CHAN_VOICE,
   CHAN_WEAPON,
   Com_sprintf,
-  CS_MAXCLIENTS,
+  CS_AIRACCEL,
+  CS_GENERAL,
   CS_PLAYERSKINS,
   type CplaneT,
   type CsurfaceT,
@@ -28,6 +30,8 @@ import {
   DF_WEAPONS_STAY,
   EF_FLAG1,
   EF_FLAG2,
+  EF_PENT,
+  EF_QUAD,
   EntityEventT,
   Info_ValueForKey,
   MASK_SHOT,
@@ -52,6 +56,7 @@ import { SolidT, SVF_NOCLIENT } from "./game";
 import {
   ANIM_DEATH,
   DEAD_DEAD,
+  DEAD_NO,
   DROPPED_ITEM,
   type EdictT,
   FL_GODMODE,
@@ -74,10 +79,11 @@ import {
   svc_layout,
   svc_temp_entity,
   WeaponstateT,
+  world,
 } from "./g_local";
 import { ArmorIndex, Drop_Item, FindItem, FindItemByClassname, GetItemByIndex, ITEM_INDEX, PowerArmorType, Touch_Item, DoRespawn } from "./g_items";
 import { CheckTeamDamage, T_Damage } from "./g_combat";
-import { PlayersRangeFromSpot, PutClientInServer, SelectFarthestDeathmatchSpawnPoint, SelectRandomDeathmatchSpawnPoint, player_die, respawn } from "./p_client";
+import { ClientUserinfoChanged, InitClientPersistant, PlayersRangeFromSpot, PutClientInServer, SelectFarthestDeathmatchSpawnPoint, SelectRandomDeathmatchSpawnPoint, player_die, respawn } from "./p_client";
 import { DeathmatchScoreboard } from "./p_hud";
 import { P_ProjectSource, PlayerNoise, Weapon_Generic } from "./p_weapon";
 import { G_Find, G_FreeEdict, G_Spawn, KillBox, tv, vectoangles, vtos } from "./g_utils";
@@ -91,7 +97,7 @@ import { CheckFlood } from "./g_cmds";
 // g_ctf.h
 //===========================================================================
 
-const CTF_VERSION = "1.09b";
+const CTF_VERSION = "1.52";
 export const CTF_STRING_VERSION = CTF_VERSION;
 
 export const STAT_CTF_TEAM1_PIC = 17;
@@ -106,8 +112,11 @@ export const STAT_CTF_TEAM2_HEADER = 25;
 export const STAT_CTF_TECH = 26;
 export const STAT_CTF_ID_VIEW = 27;
 export const STAT_CTF_MATCH = 28;
+export const STAT_CTF_ID_VIEW_COLOR = 29;
+export const STAT_CTF_TEAMINFO = 30;
 
-export const CONFIG_CTF_MATCH = CS_MAXCLIENTS - 1;
+export const CONFIG_CTF_MATCH = CS_AIRACCEL - 1;
+export const CONFIG_CTF_TEAMINFO = CS_AIRACCEL - 2;
 
 export enum CtfTeamT {
   CTF_NOTEAM,
@@ -191,6 +200,7 @@ class CtfGameT {
   match: MatchT = MatchT.MATCH_NONE;
   matchtime = 0;
   lasttime = 0;
+  countdown = false; // has audio countdown started?
 
   election: ElectT = ElectT.ELECT_NONE;
   etarget: EdictT | null = null;
@@ -199,6 +209,7 @@ class CtfGameT {
   needvotes = 0;
   electtime = 0;
   emsg = "";
+  warnactive = 0; // true if stat string 30 is active
 
   ghosts: GhostT[] = Array.from({ length: MAX_CLIENTS }, () => new GhostT());
 
@@ -219,7 +230,25 @@ let matchtime: CvarT | null = null;
 let matchsetuptime: CvarT | null = null;
 let matchstarttime: CvarT | null = null;
 let admin_password: CvarT | null = null;
+let allow_admin: CvarT | null = null;
 let warp_list: CvarT | null = null;
+let warn_unbalanced: CvarT | null = null;
+
+// Index for various CTF pics, this saves us from calling gi.imageindex
+// all the time and saves a few CPU cycles since we don't have to do
+// a bunch of string compares all the time.
+// These are set in CTFPrecache() called from worldspawn
+let imageindex_i_ctf1 = 0;
+let imageindex_i_ctf2 = 0;
+let imageindex_i_ctf1d = 0;
+let imageindex_i_ctf2d = 0;
+let imageindex_i_ctf1t = 0;
+let imageindex_i_ctf2t = 0;
+let imageindex_i_ctfj = 0;
+let imageindex_sbfctf1 = 0;
+let imageindex_sbfctf2 = 0;
+let imageindex_ctfsb1 = 0;
+let imageindex_ctfsb2 = 0;
 
 function cvarNum(c: CvarT | null): number {
   return c === null ? 0 : c.value;
@@ -307,16 +336,24 @@ export const ctf_statusbar =
   "pic 21 " +
   "endif " +
   "if 27 " +
-  "xv 0 " +
+  "xv 112 " +
   "yb -58 " +
-  'string "Viewing" ' +
-  "xv 64 " +
   "stat_string 27 " +
+  "endif " +
+  "if 29 " +
+  "xv 96 " +
+  "yb -58 " +
+  "pic 29 " +
   "endif " +
   "if 28 " +
   "xl 0 " +
   "yb -78 " +
   "stat_string 28 " +
+  "endif " +
+  "if 30 " +
+  "xl 0 " +
+  "yb -88 " +
+  "stat_string 30 " +
   "endif ";
 
 const tnames = ["item_tech1", "item_tech2", "item_tech3", "item_tech4"];
@@ -427,9 +464,28 @@ export function CTFInit(): void {
   matchsetuptime = gi.cvar("matchsetuptime", "10", 0);
   matchstarttime = gi.cvar("matchstarttime", "20", 0);
   admin_password = gi.cvar("admin_password", "", 0);
+  allow_admin = gi.cvar("allow_admin", "1", 0);
   warp_list = gi.cvar("warp_list", "q2ctf1 q2ctf2 q2ctf3 q2ctf4 q2ctf5", 0);
+  warn_unbalanced = gi.cvar("warn_unbalanced", "1", 0);
   void ctf;
   void ctf_forcejoin;
+}
+
+/*
+ * Precache CTF items
+ */
+export function CTFPrecache(): void {
+  imageindex_i_ctf1 = gi.imageindex("i_ctf1");
+  imageindex_i_ctf2 = gi.imageindex("i_ctf2");
+  imageindex_i_ctf1d = gi.imageindex("i_ctf1d");
+  imageindex_i_ctf2d = gi.imageindex("i_ctf2d");
+  imageindex_i_ctf1t = gi.imageindex("i_ctf1t");
+  imageindex_i_ctf2t = gi.imageindex("i_ctf2t");
+  imageindex_i_ctfj = gi.imageindex("i_ctfj");
+  imageindex_sbfctf1 = gi.imageindex("sbfctf1");
+  imageindex_sbfctf2 = gi.imageindex("sbfctf2");
+  imageindex_ctfsb1 = gi.imageindex("ctfsb1");
+  imageindex_ctfsb2 = gi.imageindex("ctfsb2");
 }
 
 /*--------------------------------------------------------------------------*/
@@ -441,7 +497,7 @@ export function CTFTeamName(team: number): string {
     case CtfTeamT.CTF_TEAM2:
       return "BLUE";
     default:
-      return "UKNOWN";
+      return "UNKNOWN"; // Hanzo pointed out this was spelled wrong as "UKNOWN"
   }
 }
 
@@ -452,7 +508,7 @@ export function CTFOtherTeamName(team: number): string {
     case CtfTeamT.CTF_TEAM2:
       return "RED";
     default:
-      return "UKNOWN";
+      return "UNKNOWN"; // Hanzo pointed out this was spelled wrong as "UKNOWN"
   }
 }
 
@@ -472,7 +528,7 @@ export function CTFOtherTeam(team: number): number {
 export function CTFAssignSkin(ent: EdictT, s: string): void {
   if (ent.client === null) return;
   const playernum = ent.s.number - 1;
-  const slash = s.lastIndexOf("/");
+  const slash = s.indexOf("/");
   const t = slash >= 0 ? s.slice(0, slash + 1) : "male/";
 
   switch (ent.client.resp.ctf_team) {
@@ -977,15 +1033,24 @@ export function CTFID_f(ent: EdictT): void {
 
 function CTFSetIDView(ent: EdictT): void {
   if (ent.client === null) return;
+
+  // only check every few frames
+  if (level.time - ent.client.resp.lastidtime < 0.25) return;
+  ent.client.resp.lastidtime = level.time;
+
   ent.client.ps.stats[STAT_CTF_ID_VIEW] = 0;
+  ent.client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = 0;
 
   let forward = vec3();
   AngleVectors(ent.client.v_angle, forward, null, null);
   VectorScale(forward, 1024, forward);
   VectorAdd(ent.s.origin, forward, forward);
   const tr = gi.trace(ent.s.origin, null, null, forward, ent, MASK_SOLID);
-  if (tr.fraction < 1 && tr.ent !== null && tr.ent.client !== null) {
-    ent.client.ps.stats[STAT_CTF_ID_VIEW] = CS_PLAYERSKINS + (ent.s.number - 1);
+  const trEnt = tr.ent === null ? null : g_edicts[tr.ent.s.number];
+  if (tr.fraction < 1 && trEnt !== null && trEnt !== undefined && trEnt.client !== null) {
+    ent.client.ps.stats[STAT_CTF_ID_VIEW] = CS_GENERAL + (trEnt.s.number - 1);
+    if (trEnt.client.resp.ctf_team === CtfTeamT.CTF_TEAM1) ent.client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = imageindex_sbfctf1;
+    else if (trEnt.client.resp.ctf_team === CtfTeamT.CTF_TEAM2) ent.client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = imageindex_sbfctf2;
     return;
   }
 
@@ -1006,7 +1071,11 @@ function CTFSetIDView(ent: EdictT): void {
       best = who;
     }
   }
-  if (bd > 0.9 && best !== null) ent.client.ps.stats[STAT_CTF_ID_VIEW] = CS_PLAYERSKINS + (best.s.number - 1);
+  if (bd > 0.9 && best !== null) {
+    ent.client.ps.stats[STAT_CTF_ID_VIEW] = CS_GENERAL + (best.s.number - 1);
+    if (best.client !== null && best.client.resp.ctf_team === CtfTeamT.CTF_TEAM1) ent.client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = imageindex_sbfctf1;
+    else if (best.client !== null && best.client.resp.ctf_team === CtfTeamT.CTF_TEAM2) ent.client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = imageindex_sbfctf2;
+  }
 }
 
 export function SetCTFStats(ent: EdictT): void {
@@ -1014,6 +1083,9 @@ export function SetCTFStats(ent: EdictT): void {
   const client = ent.client;
 
   client.ps.stats[STAT_CTF_MATCH] = ctfgame.match > MatchT.MATCH_NONE ? CONFIG_CTF_MATCH : 0;
+
+  if (ctfgame.warnactive !== 0) client.ps.stats[STAT_CTF_TEAMINFO] = CONFIG_CTF_TEAMINFO;
+  else client.ps.stats[STAT_CTF_TEAMINFO] = 0;
 
   // ghosting
   if (client.resp.ghost !== null) {
@@ -1023,8 +1095,8 @@ export function SetCTFStats(ent: EdictT): void {
   }
 
   // logo headers for the frag display
-  client.ps.stats[STAT_CTF_TEAM1_HEADER] = gi.imageindex("ctfsb1");
-  client.ps.stats[STAT_CTF_TEAM2_HEADER] = gi.imageindex("ctfsb2");
+  client.ps.stats[STAT_CTF_TEAM1_HEADER] = imageindex_ctfsb1;
+  client.ps.stats[STAT_CTF_TEAM2_HEADER] = imageindex_ctfsb2;
 
   // if during intermission, we must blink the team header of the winning team
   if (level.intermissiontime !== 0 && (level.framenum & 8) !== 0) {
@@ -1052,41 +1124,41 @@ export function SetCTFStats(ent: EdictT): void {
 
   // figure out what icon to display for team logos: flag at base, flag
   // taken, or flag dropped
-  let p1 = gi.imageindex("i_ctf1");
+  let p1 = imageindex_i_ctf1;
   let e = G_Find(null, "classname", "item_flag_team1");
   if (e !== null) {
     if (e.solid === SolidT.SOLID_NOT) {
-      p1 = gi.imageindex("i_ctf1d"); // default to dropped
+      p1 = imageindex_i_ctf1d; // default to dropped
       if (flag1_item !== null) {
         for (let i = 1; i <= maxclients; i++) {
           const pe = g_edicts[i];
           if (pe.inuse && pe.client !== null && pe.client.pers.inventory[ITEM_INDEX(flag1_item)]) {
-            p1 = gi.imageindex("i_ctf1t"); // enemy has it
+            p1 = imageindex_i_ctf1t; // enemy has it
             break;
           }
         }
       }
     } else if ((e.spawnflags & DROPPED_ITEM) !== 0) {
-      p1 = gi.imageindex("i_ctf1d");
+      p1 = imageindex_i_ctf1d;
     }
   }
 
-  let p2 = gi.imageindex("i_ctf2");
+  let p2 = imageindex_i_ctf2;
   e = G_Find(null, "classname", "item_flag_team2");
   if (e !== null) {
     if (e.solid === SolidT.SOLID_NOT) {
-      p2 = gi.imageindex("i_ctf2d");
+      p2 = imageindex_i_ctf2d;
       if (flag2_item !== null) {
         for (let i = 1; i <= maxclients; i++) {
           const pe = g_edicts[i];
           if (pe.inuse && pe.client !== null && pe.client.pers.inventory[ITEM_INDEX(flag2_item)]) {
-            p2 = gi.imageindex("i_ctf2t");
+            p2 = imageindex_i_ctf2t;
             break;
           }
         }
       }
     } else if ((e.spawnflags & DROPPED_ITEM) !== 0) {
-      p2 = gi.imageindex("i_ctf2d");
+      p2 = imageindex_i_ctf2d;
     }
   }
 
@@ -1111,23 +1183,26 @@ export function SetCTFStats(ent: EdictT): void {
     client.pers.inventory[ITEM_INDEX(flag2_item)] &&
     (level.framenum & 8) !== 0
   ) {
-    client.ps.stats[STAT_CTF_FLAG_PIC] = gi.imageindex("i_ctf2");
+    client.ps.stats[STAT_CTF_FLAG_PIC] = imageindex_i_ctf2;
   } else if (
     flag1_item !== null &&
     client.resp.ctf_team === CtfTeamT.CTF_TEAM2 &&
     client.pers.inventory[ITEM_INDEX(flag1_item)] &&
     (level.framenum & 8) !== 0
   ) {
-    client.ps.stats[STAT_CTF_FLAG_PIC] = gi.imageindex("i_ctf1");
+    client.ps.stats[STAT_CTF_FLAG_PIC] = imageindex_i_ctf1;
   }
 
   client.ps.stats[STAT_CTF_JOINED_TEAM1_PIC] = 0;
   client.ps.stats[STAT_CTF_JOINED_TEAM2_PIC] = 0;
-  if (client.resp.ctf_team === CtfTeamT.CTF_TEAM1) client.ps.stats[STAT_CTF_JOINED_TEAM1_PIC] = gi.imageindex("i_ctfj");
-  else if (client.resp.ctf_team === CtfTeamT.CTF_TEAM2) client.ps.stats[STAT_CTF_JOINED_TEAM2_PIC] = gi.imageindex("i_ctfj");
+  if (client.resp.ctf_team === CtfTeamT.CTF_TEAM1) client.ps.stats[STAT_CTF_JOINED_TEAM1_PIC] = imageindex_i_ctfj;
+  else if (client.resp.ctf_team === CtfTeamT.CTF_TEAM2) client.ps.stats[STAT_CTF_JOINED_TEAM2_PIC] = imageindex_i_ctfj;
 
-  client.ps.stats[STAT_CTF_ID_VIEW] = 0;
   if (client.resp.id_state) CTFSetIDView(ent);
+  else {
+    client.ps.stats[STAT_CTF_ID_VIEW] = 0;
+    client.ps.stats[STAT_CTF_ID_VIEW_COLOR] = 0;
+  }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2054,40 +2129,47 @@ export function CTFSay_Team(who: EdictT, msgIn: string): void {
     if (msg.endsWith('"')) msg = msg.slice(0, -1);
   }
 
+  // char outmsg[256] in C; the loop bound (sizeof(outmsg)-2) and the
+  // per-substitution length check before each append are ported literally
+  // even though JS strings don't have a fixed buffer, to keep the truncated
+  // output length faithful to 3.21 (3.19/3.20 used a 1024-byte buffer).
   let outmsg = "";
-  for (let i = 0; i < msg.length && outmsg.length < 1023; i++) {
+  for (let i = 0; i < msg.length && outmsg.length < 254; i++) {
     const ch = msg[i];
     if (ch === "%") {
       i++;
       const code = msg[i];
+      let buf = "";
       switch (code) {
         case "l":
         case "L":
-          outmsg += CTFSay_Team_Location(who);
+          buf = CTFSay_Team_Location(who);
           break;
         case "a":
         case "A":
-          outmsg += CTFSay_Team_Armor(who);
+          buf = CTFSay_Team_Armor(who);
           break;
         case "h":
         case "H":
-          outmsg += CTFSay_Team_Health(who);
+          buf = CTFSay_Team_Health(who);
           break;
         case "t":
         case "T":
-          outmsg += CTFSay_Team_Tech(who);
+          buf = CTFSay_Team_Tech(who);
           break;
         case "w":
         case "W":
-          outmsg += CTFSay_Team_Weapon(who);
+          buf = CTFSay_Team_Weapon(who);
           break;
         case "n":
         case "N":
-          outmsg += CTFSay_Team_Sight(who);
+          buf = CTFSay_Team_Sight(who);
           break;
         default:
           if (code !== undefined) outmsg += code;
+          continue;
       }
+      if (buf.length + outmsg.length < 254) outmsg += buf;
     } else if (ch !== undefined) {
       outmsg += ch;
     }
@@ -2256,6 +2338,7 @@ export function CTFAssignGhost(ent: EdictT): void {
 export function CTFStartMatch(): void {
   ctfgame.match = MatchT.MATCH_GAME;
   ctfgame.matchtime = level.time + cvarNum(matchtime) * 60;
+  ctfgame.countdown = false;
 
   ctfgame.team1 = 0;
   ctfgame.team2 = 0;
@@ -2437,6 +2520,8 @@ export function CTFReady(ent: EdictT): void {
     gi.bprintf(PRINT_CHAT, "All players have commited.  Match starting\n");
     ctfgame.match = MatchT.MATCH_PREGAME;
     ctfgame.matchtime = level.time + cvarNum(matchstarttime);
+    ctfgame.countdown = false;
+    gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("misc/talk1.wav"), 1, ATTN_NONE, 0);
   }
 }
 
@@ -2618,6 +2703,7 @@ export function CTFChaseCam(ent: EdictT, _p: PmenuHndT): void {
   if (ent.client === null) return;
   if (ent.client.chase_target !== null) {
     ent.client.chase_target = null;
+    ent.client.ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
     PMenu_Close(ent);
     return;
   }
@@ -2794,22 +2880,31 @@ export function CTFStartClient(ent: EdictT): boolean {
 
 export function CTFObserver(ent: EdictT): void {
   if (ent.client === null) return;
-  // start as 'observer'
-  if (ent.movetype === MovetypeT.MOVETYPE_NOCLIP) {
-    gi.cprintf(ent, PRINT_HIGH, "You are already an observer.\n");
-    return;
-  }
 
-  CTFPlayerResetGrapple(ent);
+  // start as 'observer'
+  // C: `if (ent->movetype == MOVETYPE_NOCLIP)` with no body/braces --
+  // 3.19's early "You are already an observer." return was dropped in 3.21
+  // but the `if` was left dangling, so it now binds to only the very next
+  // statement (CTFPlayerResetGrapple). An already-observing player skips
+  // just that call and falls through to run the rest of this function
+  // (including re-opening the join menu) unconditionally. Faithful
+  // bug-for-bug port of that dangling-if restructuring.
+  if (ent.movetype !== MovetypeT.MOVETYPE_NOCLIP) {
+    CTFPlayerResetGrapple(ent);
+  }
   CTFDeadDropFlag(ent);
   CTFDeadDropTech(ent);
 
+  ent.deadflag = DEAD_NO;
   ent.movetype = MovetypeT.MOVETYPE_NOCLIP;
   ent.solid = SolidT.SOLID_NOT;
   ent.svflags |= SVF_NOCLIENT;
   ent.client.resp.ctf_team = CtfTeamT.CTF_NOTEAM;
   ent.client.ps.gunindex = 0;
   ent.client.resp.score = 0;
+  const userinfo = ent.client.pers.userinfo;
+  InitClientPersistant(ent.client);
+  ClientUserinfoChanged(ent, userinfo);
   gi.linkentity(ent);
   CTFOpenJoinMenu(ent);
 }
@@ -2827,6 +2922,9 @@ export function CTFCheckRules(): boolean {
   if (ctfgame.match !== MatchT.MATCH_NONE) {
     const t = Math.trunc(ctfgame.matchtime - level.time);
 
+    // no team warnings in match mode
+    ctfgame.warnactive = 0;
+
     if (t <= 0) {
       switch (ctfgame.match) {
         case MatchT.MATCH_SETUP:
@@ -2840,11 +2938,15 @@ export function CTFCheckRules(): boolean {
           return false;
 
         case MatchT.MATCH_PREGAME:
+          // match started!
           CTFStartMatch();
+          gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("misc/tele_up.wav"), 1, ATTN_NONE, 0);
           return false;
 
         case MatchT.MATCH_GAME:
+          // match ended!
           CTFEndMatch();
+          gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("misc/bigtele.wav"), 1, ATTN_NONE, 0);
           return false;
 
         default:
@@ -2877,16 +2979,57 @@ export function CTFCheckRules(): boolean {
 
       case MatchT.MATCH_PREGAME:
         gi.configstring(CONFIG_CTF_MATCH, Com_sprintf("%02d:%02d UNTIL START", Math.trunc(t / 60), t % 60));
+        if (t <= 10 && !ctfgame.countdown) {
+          ctfgame.countdown = true;
+          gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("world/10_0.wav"), 1, ATTN_NONE, 0);
+        }
         break;
 
       case MatchT.MATCH_GAME:
         gi.configstring(CONFIG_CTF_MATCH, Com_sprintf("%02d:%02d MATCH", Math.trunc(t / 60), t % 60));
+        if (t <= 10 && !ctfgame.countdown) {
+          ctfgame.countdown = true;
+          gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("world/10_0.wav"), 1, ATTN_NONE, 0);
+        }
         break;
 
       default:
         break;
     }
     return false;
+  } else {
+    // this is only done in non-match (public) mode
+    if (level.time === ctfgame.lasttime) return false;
+    ctfgame.lasttime = Math.trunc(level.time);
+
+    if (cvarNum(warn_unbalanced) !== 0) {
+      // count up the team totals
+      let team1 = 0;
+      let team2 = 0;
+      const maxclients = cvarNum(gameCvars.maxclients);
+      for (let i = 1; i <= maxclients; i++) {
+        const ent = g_edicts[i];
+        if (!ent.inuse || ent.client === null) continue;
+        if (ent.client.resp.ctf_team === CtfTeamT.CTF_TEAM1) team1++;
+        else if (ent.client.resp.ctf_team === CtfTeamT.CTF_TEAM2) team2++;
+      }
+
+      if (team1 - team2 >= 2 && team2 >= 2) {
+        if (ctfgame.warnactive !== CtfTeamT.CTF_TEAM1) {
+          ctfgame.warnactive = CtfTeamT.CTF_TEAM1;
+          gi.configstring(CONFIG_CTF_TEAMINFO, "WARNING: Red has too many players");
+        }
+      } else if (team2 - team1 >= 2 && team1 >= 2) {
+        if (ctfgame.warnactive !== CtfTeamT.CTF_TEAM2) {
+          ctfgame.warnactive = CtfTeamT.CTF_TEAM2;
+          gi.configstring(CONFIG_CTF_TEAMINFO, "WARNING: Blue has too many players");
+        }
+      } else {
+        ctfgame.warnactive = 0;
+      }
+    } else {
+      ctfgame.warnactive = 0;
+    }
   }
 
   const capturelimitVal = cvarNum(gameCvars.capturelimit);
@@ -3203,6 +3346,8 @@ export function CTFAdmin_MatchSet(ent: EdictT, _p: PmenuHndT): void {
     gi.bprintf(PRINT_CHAT, "Match has been forced to start.\n");
     ctfgame.match = MatchT.MATCH_PREGAME;
     ctfgame.matchtime = level.time + cvarNum(matchstarttime);
+    gi.positioned_sound(world().s.origin, world(), CHAN_AUTO | CHAN_RELIABLE, gi.soundindex("misc/talk1.wav"), 1, ATTN_NONE, 0);
+    ctfgame.countdown = false;
   } else if (ctfgame.match === MatchT.MATCH_GAME) {
     gi.bprintf(PRINT_CHAT, "Match has been forced to terminate.\n");
     ctfgame.match = MatchT.MATCH_SETUP;
@@ -3221,6 +3366,16 @@ export function CTFAdmin_MatchMode(ent: EdictT, _p: PmenuHndT): void {
   }
 }
 
+export function CTFAdmin_Reset(ent: EdictT, _p: PmenuHndT): void {
+  PMenu_Close(ent);
+
+  // go back to normal mode
+  gi.bprintf(PRINT_CHAT, "Match mode has been terminated, reseting to normal game.\n");
+  ctfgame.match = MatchT.MATCH_NONE;
+  gi.cvar_set("competition", "1");
+  CTFResetAllPlayers();
+}
+
 export function CTFAdmin_Cancel(ent: EdictT, _p: PmenuHndT): void {
   PMenu_Close(ent);
 }
@@ -3237,13 +3392,22 @@ const adminmenu: PmenuT[] = [
 
 export function CTFOpenAdminMenu(ent: EdictT): void {
   const row = adminmenu[3];
+  const row4 = adminmenu[4];
   if (row !== undefined) {
     row.text = null;
     row.SelectFunc = null;
+  }
+  if (row4 !== undefined) {
+    row4.text = null;
+    row4.SelectFunc = null;
+  }
+  if (row !== undefined && row4 !== undefined) {
     if (ctfgame.match === MatchT.MATCH_SETUP) {
       row.text = "Force start match";
       row.SelectFunc = CTFAdmin_MatchSet;
-    } else if (ctfgame.match === MatchT.MATCH_GAME) {
+      row4.text = "Reset to pickup mode";
+      row4.SelectFunc = CTFAdmin_Reset;
+    } else if (ctfgame.match === MatchT.MATCH_GAME || ctfgame.match === MatchT.MATCH_PREGAME) {
       row.text = "Cancel match";
       row.SelectFunc = CTFAdmin_MatchSet;
     } else if (ctfgame.match === MatchT.MATCH_NONE && cvarNum(competition) !== 0) {
@@ -3257,6 +3421,12 @@ export function CTFOpenAdminMenu(ent: EdictT): void {
 
 export function CTFAdmin(ent: EdictT): void {
   if (ent.client === null) return;
+
+  if (cvarNum(allow_admin) === 0) {
+    gi.cprintf(ent, PRINT_HIGH, "Administration is disabled\n");
+    return;
+  }
+
   const pw = cvarStr(admin_password);
   if (gi.argc() > 1 && pw.length > 0 && !ent.client.resp.admin && pw === gi.argv(1)) {
     ent.client.resp.admin = true;
@@ -3286,7 +3456,7 @@ export function CTFStats(ent: EdictT): void {
       if (!e2.inuse || e2.client === null) continue;
       if (!e2.client.resp.ready && e2.client.resp.ctf_team !== CtfTeamT.CTF_NOTEAM) {
         const st = `${e2.client.pers.netname} is not ready.\n`;
-        if (text.length + st.length < 1400 - 50) text += st;
+        if (text.length + st.length < 1024 - 50) text += st;
       }
     }
   }
@@ -3320,7 +3490,7 @@ export function CTFStats(ent: EdictT): void {
       g.carrierdef,
       e,
     );
-    if (text.length + st.length > 1400 - 50) {
+    if (text.length + st.length > 1024 - 50) {
       text += "And more...\n";
       gi.cprintf(ent, PRINT_HIGH, text);
       return;
@@ -3433,4 +3603,11 @@ export function CTFBoot(ent: EdictT): void {
   }
 
   gi.AddCommandString(`kick ${i - 1}\n`);
+}
+
+export function CTFSetPowerUpEffect(ent: EdictT, def: number): void {
+  if (ent.client === null) return;
+  if (ent.client.resp.ctf_team === CtfTeamT.CTF_TEAM1) ent.s.effects |= EF_PENT; // red
+  else if (ent.client.resp.ctf_team === CtfTeamT.CTF_TEAM2) ent.s.effects |= EF_QUAD; // red
+  else ent.s.effects |= def;
 }
