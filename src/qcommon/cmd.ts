@@ -382,10 +382,16 @@ export function Cmd_TokenizeString(rawText: string, macroExpand: boolean): void 
       cmd_args = args.slice(0, l + 1);
     }
 
+    const startIdx = state.index;
     const comToken = COM_Parse(state);
-    // C's `if (!text) return;` here is unreachable: the `if (!*text) return;`
-    // just above guarantees at least one non-newline, non-null character is
-    // still ahead, so COM_Parse cannot hit its own "no data left" case.
+    // C's COM_Parse NULLs the data pointer when it finds no token (comment
+    // to end-of-data, e.g. a `// ...` line in default.cfg), and C's
+    // Cmd_TokenizeString returns on that instead of pushing an empty argv.
+    // A legitimately quoted empty token ("") also returns "", but consumed a
+    // quote character; discriminate on that.
+    if (comToken === "" && state.index >= state.data.length && !state.data.slice(startIdx).includes('"')) {
+      return;
+    }
 
     if (cmd_argc < MAX_STRING_TOKENS) {
       cmd_argv[cmd_argc] = comToken;

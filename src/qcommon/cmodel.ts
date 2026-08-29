@@ -430,7 +430,11 @@ function CMod_LoadBrushSides(l: LumpT): void {
     out.plane = map_planes[num];
     const j = LittleShort(din.texinfo);
     if (j >= numtexinfo) Com_Error(ERR_DROP, "Bad brushside texinfo");
-    out.surface = map_surfaces[j];
+    // C stores &map_surfaces[j] even when j is -1 (bevel sides carry no
+    // texinfo) -- an out-of-bounds pointer whose garbage csurface is later
+    // read at trace time without crashing. The defined equivalent is the
+    // zeroed nullsurface the C file already uses for missing texinfo.
+    out.surface = j >= 0 ? map_surfaces[j] : nullsurface;
     map_brushsides.push(out);
   }
 }

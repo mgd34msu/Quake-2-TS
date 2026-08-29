@@ -309,6 +309,17 @@ describe("Cbuf_*/Cmd_* command execution", () => {
     expect(seen).toEqual(["a;b"]);
   });
 
+  test("comment-only and CRLF lines tokenize to zero args (retail default.cfg regression)", () => {
+    Cmd_TokenizeString("// KEY BINDINGS\r", true);
+    expect(Cmd_Argc()).toBe(0);
+    Cmd_TokenizeString("\r", true);
+    expect(Cmd_Argc()).toBe(0);
+    // a genuinely quoted empty token is still a token (C behavior)
+    Cmd_TokenizeString('say ""', true);
+    expect(Cmd_Argc()).toBe(2);
+    expect(Cmd_Argv(1)).toBe("");
+  });
+
   test("Cmd_TokenizeString fidelity: argc/argv, quoted tokens, and Cmd_Args", () => {
     Cmd_TokenizeString('say  hello   "quoted arg"  last', false);
     expect(Cmd_Argc()).toBe(4);
