@@ -737,17 +737,36 @@ export function Cmd_PlayerList_f(ent: EdictT): void {
 
 import { Cmd_Help_f, Cmd_Score_f } from "./p_hud";
 
+// Recovers the full EdictT for the `Edict` ClientCommand receives across the
+// GameExports boundary, by reference identity rather than the EDICT_NUM
+// idiom (g_edicts[ent.s.number]). p_client.ts's edictFromBoundary comment
+// (commit 77082d8) explains why the numeric lookup is unsound here: on a
+// fresh boot, g_spawn.ts's SpawnEntities `.clear()`s every edict including
+// reserved player slots, and a player slot's `s.number` is not restored
+// until sv_user.ts's SV_New_f runs. sv_ccmds.ts and sv_user.ts can both
+// dispatch client stringcmds (this function) before that point, so a
+// just-connected, not-yet-`new`'d client's `edict.s.number` can still read
+// stale-zero, and the numeric lookup would silently resolve to the world
+// edict instead of the real client. Recovering by reference identity
+// sidesteps that staleness window entirely and needs no cast (EdictT
+// structurally satisfies Edict, so `===` narrows cleanly).
+function edictFromBoundary(entIn: Edict): EdictT {
+  const found = g_edicts.find((e) => e === entIn);
+  if (found !== undefined) return found;
+  gi.error("g_cmds: boundary edict not found in g_edicts");
+}
+
 /*
 =================
 ClientCommand
 =================
 */
 // ClientCommand is a GameExports boundary member (crosses from server code,
-// which only sees `Edict`); recover the full game-private `EdictT` via the
-// EDICT_NUM idiom (g_edicts[ent.s.number]), per PORTING.md, rather than a
-// cast.
+// which only sees `Edict`); recover the full game-private `EdictT` via
+// edictFromBoundary rather than the EDICT_NUM idiom (g_edicts[ent.s.number])
+// or a cast -- see edictFromBoundary's comment above.
 export function ClientCommand(edict: Edict): void {
-  const ent = g_edicts[edict.s.number];
+  const ent = edictFromBoundary(edict);
   if (ent.client === null) return; // not fully in game yet
 
   const cmd = gi.argv(0);

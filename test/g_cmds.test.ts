@@ -283,4 +283,34 @@ describe("ClientCommand", () => {
     expect(() => ClientCommand(ent)).not.toThrow();
     expect(ent.flags & FL_NOTARGET).toBe(0);
   });
+
+  test("recovers the correct client edict by identity when s.number is stale-zero, not world", () => {
+    // Models a just-connected client slot: g_spawn.ts's SpawnEntities
+    // .clear()s every edict (including reserved player slots) on map load,
+    // and sv_user.ts's SV_New_f hasn't run yet to re-sync s.number. A boundary
+    // Edict reaching ClientCommand pre-spawn can therefore still read
+    // s.number === 0 even though it really lives at g_edicts[2]. The old
+    // g_edicts[edict.s.number] lookup would silently resolve that to world
+    // (g_edicts[0], client === null) and bail out instead of dispatching to
+    // the real client.
+    const args: FakeArgs = { argv: ["notarget"] };
+    const recorded: RecordedPrints = { bprintf: [], cprintf: [] };
+    setupWorld(args, recorded);
+
+    const ent = g_edicts[2];
+    ent.s.number = 0; // stale-zero, not yet re-synced by SV_New_f
+    ent.inuse = true;
+    const client = new GClientT();
+    client.pers.netname = "player";
+    client.pers.userinfo = "\\skin\\male/grunt";
+    ent.client = client;
+
+    expect(ent.flags & FL_NOTARGET).toBe(0);
+
+    ClientCommand(ent);
+
+    // Dispatched to the real client at g_edicts[2], not world.
+    expect(ent.flags & FL_NOTARGET).toBe(FL_NOTARGET);
+    expect(g_edicts[0].flags & FL_NOTARGET).toBe(0);
+  });
 });
