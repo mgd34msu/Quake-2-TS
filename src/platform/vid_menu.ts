@@ -180,7 +180,7 @@ export function VID_MenuInit(): void {
     "[960 720  ]",
     "[1024 768 ]",
     "[1152 864 ]",
-    "[1280 1024]",
+    "[1280 960 ]", // win32 pairing: vid.ts mode 8 is 1280x960 (linux label said 1024)
     "[1600 1200]",
     "[1920 1080]",
   ];

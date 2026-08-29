@@ -340,7 +340,7 @@ export function Draw_StretchRaw(x: number, y: number, w: number, h: number, cols
   }
   const t = (rows * hscale) / 256;
 
-  if (!(glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value)) {
+  if (!qgl.qglColorTableEXT) { // C gl_draw.c:344: if ( !qglColorTableEXT )
     const image32 = new Uint32Array(256 * 256);
     for (let i = 0; i < trows; i++) {
       const row = (i * hscale) | 0;

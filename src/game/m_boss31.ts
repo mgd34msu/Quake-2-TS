@@ -115,8 +115,7 @@ function jorg_search(self: EdictT): void {
 
 const jorg_frames_stand: MframeT[] = [
   mkframe(ai_stand, 0, jorg_idle),
-  mkframe(ai_stand, 0),
-  mkframe(ai_stand, 0),
+    mkframe(ai_stand, 0),
   mkframe(ai_stand, 0),
   mkframe(ai_stand, 0),
   mkframe(ai_stand, 0),

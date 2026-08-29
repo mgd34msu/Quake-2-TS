@@ -198,6 +198,7 @@ const makron_frames_pain6: MframeT[] = [
   mkframe(ai_move, 0),
   mkframe(ai_move, 0),
   mkframe(ai_move, 0),
+  mkframe(ai_move, 0),
   mkframe(ai_move, 0, makron_taunt),
   mkframe(ai_move, 0),
   mkframe(ai_move, 0),

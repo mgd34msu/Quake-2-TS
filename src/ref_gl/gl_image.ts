@@ -1259,7 +1259,7 @@ export function GL_InitImages(): void {
 
   Draw_GetPalette();
 
-  if (glCvars.gl_ext_palettedtexture && glCvars.gl_ext_palettedtexture.value) {
+  if (qgl.qglColorTableEXT) { // C: if ( qglColorTableEXT ) -- pointer, not cvar
     const { data } = ri.FS_LoadFile("pics/16to8.dat");
     if (!data) {
       ri.Sys_Error(ERR_FATAL, "Couldn't load pics/16to8.pcx");

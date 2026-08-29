@@ -237,6 +237,7 @@ const medic_frames_stand: MframeT[] = [
   mkframe(ai_stand, 0),
   mkframe(ai_stand, 0),
   mkframe(ai_stand, 0),
+  mkframe(ai_stand, 0),
 ];
 const medic_move_stand = mkmove(FRAME.FRAME_wait1, FRAME.FRAME_wait90, medic_frames_stand, null);
 
