@@ -111,6 +111,11 @@ export function Com_EndRedirect(): void {
 
 let logfile: number | null = null;
 
+let conPrintHandler: ((msg: string) => void) | null = null;
+export function SetConPrintHandler(fn: (msg: string) => void): void {
+  conPrintHandler = fn;
+}
+
 // common.c's `int time_before_game, time_after_game, time_before_ref,
 // time_after_ref;` (qcommon.h externs them). Written from sv_main.ts and the
 // renderer, read by Qcommon_Frame's host_speeds report in src/main.ts, so
@@ -176,8 +181,10 @@ export function Com_Printf(fmt: string, ...args: Array<string | number>): void {
     return;
   }
 
-  // Con_Print(msg) -- dropped: client console not yet ported (this build is
-  // dedicated-only for now; owning module: src/client/console.ts).
+  // console.c's Con_Print lives client-side; qcommon cannot import the
+  // client, so the client registers the handler at Con_Init (the same
+  // link-time-binding idiom as cmd.ts's setCmdForwardToServerHandler).
+  if (conPrintHandler) conPrintHandler(msg);
 
   // also echo to debugging console
   Sys_ConsoleOutput(msg);

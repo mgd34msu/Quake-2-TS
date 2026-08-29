@@ -37,7 +37,7 @@ import { key_lines, edit_line, key_linepos, setKeyLinepos } from "./keys_impl";
 import { chat_team, chat_buffer, chat_bufferlen, setChatTeam } from "./keys";
 import { Cvar_Get, Cvar_Set, Cvar_VariableValue } from "../qcommon/cvar";
 import { Cmd_AddCommand, Cmd_Argc, Cmd_Argv, Cbuf_AddText } from "../qcommon/cmd";
-import { Com_Printf, Com_ServerState } from "../qcommon/common";
+import { SetConPrintHandler, Com_Printf, Com_ServerState } from "../qcommon/common";
 import { Com_sprintf, type CvarT } from "../shared/q_shared";
 import { VERSION } from "../qcommon/qcommon";
 import { FS_Gamedir, FS_CreatePath, FS_FOpenFileWrite, FS_Write, FS_FCloseFile } from "../qcommon/files";
@@ -289,6 +289,7 @@ Con_Init
 ================
 */
 export function Con_Init(): void {
+  SetConPrintHandler(Con_Print);
   con.linewidth = -1;
 
   Con_CheckResize();
