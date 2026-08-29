@@ -669,32 +669,7 @@ export function G_FindTeams(): void {
   gi.dprintf(`${c} teams with ${c2} entities\n`);
 }
 
-// p_client.c's SaveClientData; p_client.ts does not export this symbol yet
-// (g_main.ts's own GetGameAPI comment names the same four missing
-// ClientConnect/ClientBegin/... exports -- this is a fifth). SpawnEntities
-// calls it unconditionally as its very first action, before g_edicts is
-// even reset, so gating it behind PendingPort (this file's usual fallback
-// for a missing sibling) would make every SpawnEntities scenario
-// unreachable, not just the ones that exercise SaveClientData's own logic.
-// It is small and self-contained (g_edicts/game.clients/gameCvars are all
-// already available here), so it is mirrored faithfully rather than
-// stubbed; delete this copy and import the real p_client.ts export once
-// that module lands.
-function SaveClientData(): void {
-  const maxclients = cvarNum(gameCvars.maxclients);
-  for (let i = 0; i < maxclients; i++) {
-    const ent = g_edicts[1 + i];
-    if (ent === undefined || !ent.inuse) continue;
-    const client = game.clients[i];
-    if (client === undefined) continue;
-    client.pers.health = ent.health;
-    client.pers.max_health = ent.max_health;
-    client.pers.savedFlags = ent.flags & (FL_GODMODE | FL_NOTARGET | FL_POWER_ARMOR);
-    if (cvarNum(gameCvars.coop) !== 0 && ent.client !== null) {
-      client.pers.score = ent.client.resp.score;
-    }
-  }
-}
+import { SaveClientData } from "./p_client";
 
 /*
 ==============

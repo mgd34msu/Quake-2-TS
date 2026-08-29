@@ -79,25 +79,7 @@ function ReadLevel(filename: string): void {
   throw new PendingPort("g_save.c:ReadLevel");
 }
 
-// g_local.h attributes these four to "g_client.c" (a file that does not
-// exist in the C tree -- see p_client.ts's own header comment); grepping
-// the C tree shows their real definitions live in p_client.c, but
-// p_client.ts does not export them yet.
-function ClientConnect(ent: Edict, userinfo: string): { allowed: boolean; userinfo: string } {
-  throw new PendingPort("p_client.c:ClientConnect");
-}
-function ClientBegin(ent: Edict): void {
-  throw new PendingPort("p_client.c:ClientBegin");
-}
-function ClientUserinfoChanged(ent: Edict, userinfo: string): void {
-  throw new PendingPort("p_client.c:ClientUserinfoChanged");
-}
-function ClientDisconnect(ent: Edict): void {
-  throw new PendingPort("p_client.c:ClientDisconnect");
-}
-function ClientThink(ent: Edict, cmd: UsercmdT): void {
-  throw new PendingPort("p_client.c:ClientThink");
-}
+import { ClientBegin, ClientConnect, ClientDisconnect, ClientThink, ClientUserinfoChanged } from "./p_client";
 
 /*
 =================

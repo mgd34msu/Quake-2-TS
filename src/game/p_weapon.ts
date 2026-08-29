@@ -7,24 +7,7 @@
 // not g_items.c, so they are attributed here per PORTING.md.
 //
 // m_player.h frame split: m_player.h is a 200+ constant qdata-generated
-// frame table for the player model; p_weapon.c only ever references the
-// eleven FRAME_* names below (pain/attack poses used while a weapon
-// animates). Only those eleven are ported here as local consts. The full
-// m_player.h table belongs to the future p_client unit (p_client.c uses
-// dozens more of them for movement/death animation) and should be ported
-// there as m_player_frames.ts or similar; duplicating the ones used here
-// avoids taking a dependency the other direction before that unit exists.
-const FRAME_attack1 = 46;
-const FRAME_attack8 = 53;
-const FRAME_pain301 = 62;
-const FRAME_pain304 = 65;
-const FRAME_crattak1 = 160;
-const FRAME_crattak3 = 162;
-const FRAME_crattak9 = 168;
-const FRAME_crpain1 = 169;
-const FRAME_crpain4 = 172;
-const FRAME_wave01 = 112;
-const FRAME_wave08 = 119;
+import { FRAME_attack1, FRAME_attack8, FRAME_pain301, FRAME_pain304, FRAME_crattak1, FRAME_crattak3, FRAME_crattak9, FRAME_crpain1, FRAME_crpain4, FRAME_wave01, FRAME_wave08 } from "./m_player_frames";
 
 import { AngleVectors, crandom, random, vec3, type Vec3, vec3_origin, VectorAdd, VectorCopy, VectorScale, VectorSet, VectorSubtract } from "../shared/math";
 import {

@@ -39,23 +39,7 @@ import { Add_Ammo, FindItem, ITEM_INDEX, itemlist, SpawnItem, Touch_Item } from 
 import { G_FreeEdict, G_Spawn } from "./g_utils";
 import { player_die } from "./p_client";
 
-// m_player.h's FRAME_* animation-frame constants are not ported anywhere yet
-// (m_player.h/p_view.c's frame table is a separate, not-yet-landed unit, and
-// this worker's SCOPE does not include creating a new m_player_frames.ts
-// sibling). Cmd_Wave_f needs exactly these ten, so they are declared locally
-// here with their m_player.h values (verified against
-// quake-2-c/game/m_player.h). Follow-up: once that module lands, import
-// these from there instead and drop this block.
-const FRAME_flip01 = 72;
-const FRAME_flip12 = 83;
-const FRAME_salute01 = 84;
-const FRAME_salute11 = 94;
-const FRAME_taunt01 = 95;
-const FRAME_taunt17 = 111;
-const FRAME_wave01 = 112;
-const FRAME_wave11 = 122;
-const FRAME_point01 = 123;
-const FRAME_point12 = 134;
+import { FRAME_flip01, FRAME_flip12, FRAME_salute01, FRAME_salute11, FRAME_taunt01, FRAME_taunt17, FRAME_wave01, FRAME_wave11, FRAME_point01, FRAME_point12 } from "./m_player_frames";
 
 // atoi(): C's atoi returns 0 for a string with no valid leading integer.
 function atoiC(s: string): number {

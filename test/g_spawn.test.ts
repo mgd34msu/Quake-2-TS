@@ -28,6 +28,7 @@ import {
   G_FindTeams,
   SpawnEntities,
 } from "../src/game/g_spawn";
+import { InitItems } from "../src/game/g_items";
 
 const MAXENTITIES = 64;
 const MAXCLIENTS = 1;
@@ -235,7 +236,7 @@ describe("ED_CallSpawn", () => {
     expect(ent.inuse).toBe(true);
   });
 
-  test("a classname resolved via spawns[] to a still-pending sibling SP_ function throws that function's PendingPort", () => {
+  test("a classname resolved via spawns[] runs its real SP_ function", () => {
     const rec = makeRecorder();
     setupWorld(rec);
 
@@ -243,15 +244,7 @@ describe("ED_CallSpawn", () => {
     ent.inuse = true;
     ent.classname = "info_player_start";
 
-    let threw: unknown;
-    try {
-      ED_CallSpawn(ent);
-    } catch (err) {
-      threw = err;
-    }
-
-    expect(threw).toBeInstanceOf(PendingPort);
-    expect((threw as PendingPort).message).toBe("not yet ported: p_client.c:SP_info_player_start");
+    expect(() => ED_CallSpawn(ent)).not.toThrow();
   });
 });
 
@@ -301,44 +294,23 @@ describe("SpawnEntities", () => {
   test("clamps an out-of-range skill cvar via gi.cvar_forceset", () => {
     const rec = makeRecorder();
     setupWorld(rec);
+    InitItems(); // InitGame's job in C (g_save.c); SP_worldspawn precaches items
     gameCvars.skill = fakeCvar(7.8);
 
-    let threw: unknown;
-    try {
-      SpawnEntities("q2dm1", '{ "classname" "worldspawn" }', "");
-    } catch (err) {
-      threw = err;
-    }
-
-    // it still throws later (world's SP_worldspawn hits a pending
-    // dependency -- see the next test), but the clamp happens first.
-    expect(threw).toBeInstanceOf(PendingPort);
+    expect(() => SpawnEntities("q2dm1", '{ "classname" "worldspawn" }', "")).not.toThrow();
     expect(rec.cvar_forceset).toHaveLength(1);
     expect(rec.cvar_forceset[0]?.name).toBe("skill");
     expect(Number.parseFloat(rec.cvar_forceset[0]?.value ?? "")).toBeCloseTo(3);
   });
 
-  test("parses the world entity, sets its edict fields, then propagates the first pending sibling dependency (p_client.c:InitBodyQue)", () => {
+  test("parses the world entity end-to-end: worldspawn spawns, body queue inits, fields set", () => {
     const rec = makeRecorder();
     setupWorld(rec);
+    InitItems();
 
     const entities = '{ "classname" "worldspawn" "message" "Base 1" } { "classname" "info_player_start" }';
 
-    let threw: unknown;
-    try {
-      SpawnEntities("q2dm1", entities, "start");
-    } catch (err) {
-      threw = err;
-    }
-
-    // SP_worldspawn's very first call is InitBodyQue() (p_client.c), which
-    // is still a PendingPort stub; every gi.configstring call in
-    // SP_worldspawn comes *after* that call in the original source order
-    // (bug-for-bug preserved -- see g_spawn.ts's SP_worldspawn), so no
-    // configstring call has fired yet when this throws. What HAS already
-    // run is the block immediately preceding InitBodyQue().
-    expect(threw).toBeInstanceOf(PendingPort);
-    expect((threw as PendingPort).message).toBe("not yet ported: p_client.c:InitBodyQue");
+    expect(() => SpawnEntities("q2dm1", entities, "start")).not.toThrow();
 
     const world = g_edicts[0];
     expect(world.inuse).toBe(true);

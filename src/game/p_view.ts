@@ -5,26 +5,7 @@
 // worker, G6a). Only the twenty FRAME_* names this file references are
 // ported here as local consts; report/relocate once m_player_frames.ts
 // lands.
-const FRAME_stand01 = 0;
-const FRAME_stand40 = 39;
-const FRAME_run1 = 40;
-const FRAME_run6 = 45;
-const FRAME_pain101 = 54;
-const FRAME_pain104 = 57;
-const FRAME_pain201 = 58;
-const FRAME_pain204 = 61;
-const FRAME_pain301 = 62;
-const FRAME_pain304 = 65;
-const FRAME_jump1 = 66;
-const FRAME_jump2 = 67;
-const FRAME_jump3 = 68;
-const FRAME_jump6 = 71;
-const FRAME_crstnd01 = 135;
-const FRAME_crstnd19 = 153;
-const FRAME_crwalk1 = 154;
-const FRAME_crwalk6 = 159;
-const FRAME_crpain1 = 169;
-const FRAME_crpain4 = 172;
+import { FRAME_stand01, FRAME_stand40, FRAME_run1, FRAME_run6, FRAME_pain101, FRAME_pain104, FRAME_pain201, FRAME_pain204, FRAME_pain301, FRAME_pain304, FRAME_jump1, FRAME_jump2, FRAME_jump3, FRAME_jump6, FRAME_crstnd01, FRAME_crstnd19, FRAME_crwalk1, FRAME_crwalk6, FRAME_crpain1, FRAME_crpain4 } from "./m_player_frames";
 
 import {
   AngleVectors,
