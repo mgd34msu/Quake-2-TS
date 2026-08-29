@@ -18,7 +18,7 @@ Every worker follows this file. It is the contract; the check gate is `bun run c
 | `linux/ win32/ solaris/ irix/` | `src/platform/` — ONE bun implementation of the sys/net/vid/snd interfaces (`sys.ts`, `net_udp.ts`, `vid.ts`, `snd.ts`). The per-OS dirs are alternative implementations of the same interface and are not transliterated. |
 | `null/*.c` | `src/null/<basename>.ts` (headless client stubs for the dedicated server) |
 | `ctf/` | `src/ctf/` (last track; copies `src/game` structure) |
-| `ref_gl/` | not ported (no OpenGL binding under bun); documented here |
+| `ref_gl/gl_*.c` | `src/ref_gl/<basename>.ts`; the C `qgl` function-pointer table becomes the `QGL` interface in `src/ref_gl/qgl.ts`, bound to the system libGL via `bun:ffi` at runtime (`loadQGLFromSystem`, extensions via SDL's GetProcAddress), with a `QGLRecording` fake for tests. Extension entry points are `| null` exactly like the C pointers. GLimp lives in `src/platform/glimp.ts` over SDL GL contexts; `vid_ref gl` selects it at runtime. |
 
 Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configuration).
 
@@ -36,7 +36,7 @@ Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configur
 - `trace_t.ent` is `unknown` in `src/shared/q_shared.ts` (C forward-declares `struct edict_s` there). `src/game/game.ts` ports C `game.h`'s shared edict prefix as `interface Edict`; server code uses `Edict` throughout and game code recovers its full `EdictT` with the C idiom `g_edicts[ent.s.number]` (EDICT_NUM), never a cast. Game-facing traces are typed in `game.ts` as `interface GTraceT extends Omit<TraceT, "ent"> { ent: Edict | null }`.
 - C helpers that mutate a `char*` in place (`Com_sprintf(dest, size, ...)`, `COM_DefaultExtension`, `Info_RemoveKey`, `Info_SetValueForKey`) return the new string instead; JS strings are immutable. `Com_sprintf(fmt, ...args): string`.
 - When a helper's true source file differs from the mapping table above (e.g. `random()`/`crandom()` live in `g_local.h` but are mapped to `math.ts`), the brief's placement wins; report the mismatch, don't move it.
-- Pending stubs: only when a brief explicitly says so, a worker may create a sibling module whose functions `throw new PendingPort("name")` (`src/qcommon/pending.ts`). Stubs exist so units verify independently; the owning unit later replaces the whole file. The close phase deletes `pending.ts` and proves zero references remain.
+- Pending stubs (historical): during concurrent porting, briefs could authorize sibling stubs throwing `PendingPort`. The close phase ran: `pending.ts` is deleted and zero references remain. Functions that are bodyless declarations in the C source throw plain `Error`s naming themselves.
 
 ## Globals and module structure
 
