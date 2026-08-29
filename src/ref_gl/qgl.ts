@@ -25,7 +25,7 @@ gap -- add one alongside GLimp_Shutdown when gl_rmain.ts's real R_Shutdown
 lands).
 */
 
-import { dlopen, FFIType, type Library, type Pointer } from "bun:ffi";
+import { dlopen, FFIType, linkSymbols, type Library, type Pointer } from "bun:ffi";
 
 // GL entry points that take `const GLfloat *` / `const GLuint *` / `const
 // GLvoid *` etc pass a small fixed-size C array in every call site this
@@ -335,8 +335,19 @@ const u32 = FFIType.u32;
 const bool = FFIType.bool;
 const voidType = FFIType.void;
 
-// FFIType symbol table for dlopen(), one entry per QGL member, keyed by the
-// real (unprefixed) GL symbol name a dlsym() lookup expects.
+// FFIType symbol table for dlopen(), one entry per QGL core-1.1 member,
+// keyed by the real (unprefixed) GL symbol name a dlsym() lookup expects.
+// The seven *_EXT/*_SGIS vendor-extension members are deliberately not in
+// this table -- see `glExtensionSymbols` below: bun:ffi's dlopen() rejects
+// the whole call if even one requested symbol is missing (verified
+// empirically), and unlike the ~59 core entries here, the extension
+// entries are not guaranteed to be dlsym-able off the base library at all
+// (confirmed on this host's Mesa libGL.so.1: glMTexCoord2fSGIS/
+// glSelectTextureSGIS are absent from that dlsym namespace even though the
+// rest resolve fine) -- the GLX/WGL spec only promises those through
+// glXGetProcAddress/wglGetProcAddress once a context is current, which is
+// what `getProcAddress` (SDL_GL_GetProcAddress, wired from glimp.ts through
+// vid.ts) stands in for here.
 const glSymbols = {
   glAlphaFunc: { args: [u32, f32], returns: voidType },
   glArrayElement: { args: [i32], returns: voidType },
@@ -351,7 +362,6 @@ const glSymbols = {
   glColor4fv: { args: [ptr], returns: voidType },
   glColor4ubv: { args: [ptr], returns: voidType },
   glColorPointer: { args: [i32, u32, i32, ptr], returns: voidType },
-  glColorTableEXT: { args: [i32, i32, i32, i32, i32, ptr], returns: voidType },
   glCullFace: { args: [u32], returns: voidType },
   glDeleteTextures: { args: [i32, ptr], returns: voidType },
   glDepthFunc: { args: [u32], returns: voidType },
@@ -369,12 +379,8 @@ const glSymbols = {
   glGetString: { args: [u32], returns: ptr },
   glLoadIdentity: { args: [], returns: voidType },
   glLoadMatrixf: { args: [ptr], returns: voidType },
-  glLockArraysEXT: { args: [i32, i32], returns: voidType },
   glMatrixMode: { args: [u32], returns: voidType },
-  glMTexCoord2fSGIS: { args: [u32, f32, f32], returns: voidType },
   glOrtho: { args: [f64, f64, f64, f64, f64, f64], returns: voidType },
-  glPointParameterfEXT: { args: [u32, f32], returns: voidType },
-  glPointParameterfvEXT: { args: [u32, ptr], returns: voidType },
   glPointSize: { args: [f32], returns: voidType },
   glPolygonMode: { args: [u32, u32], returns: voidType },
   glPopMatrix: { args: [], returns: voidType },
@@ -383,7 +389,6 @@ const glSymbols = {
   glRotatef: { args: [f32, f32, f32, f32], returns: voidType },
   glScalef: { args: [f32, f32, f32], returns: voidType },
   glScissor: { args: [i32, i32, i32, i32], returns: voidType },
-  glSelectTextureSGIS: { args: [u32], returns: voidType },
   glShadeModel: { args: [u32], returns: voidType },
   glTexCoord2f: { args: [f32, f32], returns: voidType },
   glTexEnvf: { args: [u32, u32, f32], returns: voidType },
@@ -391,7 +396,6 @@ const glSymbols = {
   glTexParameterf: { args: [u32, u32, f32], returns: voidType },
   glTexSubImage2D: { args: [u32, i32, i32, i32, i32, i32, u32, u32, ptr], returns: voidType },
   glTranslatef: { args: [f32, f32, f32], returns: voidType },
-  glUnlockArraysEXT: { args: [], returns: voidType },
   glVertex2f: { args: [f32, f32], returns: voidType },
   glVertex3f: { args: [f32, f32, f32], returns: voidType },
   glVertex3fv: { args: [ptr], returns: voidType },
@@ -399,33 +403,154 @@ const glSymbols = {
   glViewport: { args: [i32, i32, i32, i32], returns: voidType },
 } as const;
 
+// A function that resolves a GL symbol name to its address without going
+// through dlsym() against the base library -- SDL_GL_GetProcAddress's
+// signature (see sdl.ts), passed in by vid.ts's VID_LoadRefresh. Optional:
+// callers that never wire one up (this loader's own pre-existing zero-arg
+// call site in gl_rmain.ts's R_Init) fall back to a per-symbol dlsym()
+// attempt instead, see the seven `resolveGl*` functions below.
+export type GLGetProcAddressFn = (name: string) => Pointer | bigint | null;
+
+// Each of these resolves one *_EXT/*_SGIS symbol, either through
+// `getProcAddress` (when supplied, via bun:ffi's linkSymbols against the
+// resolved address) or a standalone per-symbol dlopen() against the same
+// library (when not) -- deliberately never folded into the single
+// `glSymbols` dlopen() above, since one missing symbol there would
+// otherwise fail every core entry point too (verified empirically, see
+// that table's header comment). Written out individually rather than
+// through one generic helper: a generic keyed by a type parameter can't
+// build the `{ [name]: sig }` object bun:ffi's dlopen()/linkSymbols expect
+// without an `as` cast to widen the computed key, which PORTING.md's
+// no-`as`-except-`as const` rule forbids.
+function resolveGlLockArraysEXT(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): ((first: number, count: number) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glLockArraysEXT");
+    if (resolved === null) return null;
+    return linkSymbols({ glLockArraysEXT: { args: [i32, i32], returns: voidType, ptr: resolved } }).symbols.glLockArraysEXT;
+  }
+  try {
+    return dlopen(libraryPath, { glLockArraysEXT: { args: [i32, i32], returns: voidType } }).symbols.glLockArraysEXT;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlUnlockArraysEXT(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): (() => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glUnlockArraysEXT");
+    if (resolved === null) return null;
+    return linkSymbols({ glUnlockArraysEXT: { args: [], returns: voidType, ptr: resolved } }).symbols.glUnlockArraysEXT;
+  }
+  try {
+    return dlopen(libraryPath, { glUnlockArraysEXT: { args: [], returns: voidType } }).symbols.glUnlockArraysEXT;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlPointParameterfEXT(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): ((param: number, value: number) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glPointParameterfEXT");
+    if (resolved === null) return null;
+    return linkSymbols({ glPointParameterfEXT: { args: [u32, f32], returns: voidType, ptr: resolved } }).symbols.glPointParameterfEXT;
+  }
+  try {
+    return dlopen(libraryPath, { glPointParameterfEXT: { args: [u32, f32], returns: voidType } }).symbols.glPointParameterfEXT;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlPointParameterfvEXT(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): ((param: number, value: GLPointer) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glPointParameterfvEXT");
+    if (resolved === null) return null;
+    return linkSymbols({ glPointParameterfvEXT: { args: [u32, ptr], returns: voidType, ptr: resolved } }).symbols.glPointParameterfvEXT;
+  }
+  try {
+    return dlopen(libraryPath, { glPointParameterfvEXT: { args: [u32, ptr], returns: voidType } }).symbols.glPointParameterfvEXT;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlColorTableEXT(
+  libraryPath: string,
+  getProcAddress: GLGetProcAddressFn | undefined,
+): ((target: number, internalformat: number, width: number, format: number, type: number, table: GLPointer) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glColorTableEXT");
+    if (resolved === null) return null;
+    return linkSymbols({ glColorTableEXT: { args: [i32, i32, i32, i32, i32, ptr], returns: voidType, ptr: resolved } }).symbols.glColorTableEXT;
+  }
+  try {
+    return dlopen(libraryPath, { glColorTableEXT: { args: [i32, i32, i32, i32, i32, ptr], returns: voidType } }).symbols.glColorTableEXT;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlMTexCoord2fSGIS(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): ((target: number, s: number, t: number) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glMTexCoord2fSGIS");
+    if (resolved === null) return null;
+    return linkSymbols({ glMTexCoord2fSGIS: { args: [u32, f32, f32], returns: voidType, ptr: resolved } }).symbols.glMTexCoord2fSGIS;
+  }
+  try {
+    return dlopen(libraryPath, { glMTexCoord2fSGIS: { args: [u32, f32, f32], returns: voidType } }).symbols.glMTexCoord2fSGIS;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGlSelectTextureSGIS(libraryPath: string, getProcAddress: GLGetProcAddressFn | undefined): ((target: number) => void) | null {
+  if (getProcAddress) {
+    const resolved = getProcAddress("glSelectTextureSGIS");
+    if (resolved === null) return null;
+    return linkSymbols({ glSelectTextureSGIS: { args: [u32], returns: voidType, ptr: resolved } }).symbols.glSelectTextureSGIS;
+  }
+  try {
+    return dlopen(libraryPath, { glSelectTextureSGIS: { args: [u32], returns: voidType } }).symbols.glSelectTextureSGIS;
+  } catch {
+    return null;
+  }
+}
+
 // Binds QGL against the real system OpenGL library via bun:ffi's dlopen().
 //
-// This resolves every symbol with a plain dlsym() against the base library
-// handle, exactly like qgl_linux.c. That is faithful for core GL 1.1 entry
-// points, but the GLX/WGL spec does not guarantee `*_EXT`/`*_SGIS` extension
-// symbols resolve correctly without a *current* GL context -- which this
-// function cannot create (there is no window/surface here). The real
-// context-aware path is `SDL_GL_GetProcAddress`, to be wired up once the
-// sibling src/platform/sdl.ts unit lands and GLimp_Init calls it; until
-// then this loader is only safe to call after a GL context has already been
-// made current by that future code, and is otherwise gated by whatever
-// error dlopen()/dlsym() itself raises for a library with no bound context.
-export function loadQGLFromSystem(): QGL {
+// This resolves every core GL 1.1 symbol with a plain dlsym() against the
+// base library handle, exactly like qgl_linux.c. `getProcAddress` (when
+// passed -- src/platform/sdl.ts's SDLGL_GetProcAddress, wired up by
+// src/platform/vid.ts's VID_LoadRefresh once a GL context is current) is
+// used for the seven `*_EXT`/`*_SGIS` vendor-extension members instead,
+// since the GLX/WGL spec does not guarantee those resolve via plain dlsym()
+// (confirmed on this host: two of the seven do not). Called with no
+// argument at all (this loader's original zero-arg shape, still used by
+// gl_rmain.ts's R_Init before a platform GLimp is wired in some build
+// configurations), each extension falls back to its own per-symbol dlsym()
+// attempt; if that also fails the member becomes a no-op rather than a
+// missing property, matching QGL's "every member always exists" interface
+// contract (see this file's own header note on why QGL can't express "this
+// driver doesn't have it").
+export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
   const libraryPath = resolveSystemGLLibraryPath();
 
   let lib: Library<typeof glSymbols>;
   try {
     lib = dlopen(libraryPath, glSymbols);
   } catch (err) {
-    throw new Error(
-      `loadQGLFromSystem: failed to load ${libraryPath} -- this needs a GL context ` +
-        `(a window/surface must exist first; that binding path is src/platform/sdl.ts's ` +
-        `SDL_GL_GetProcAddress, not yet wired up here): ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`loadQGLFromSystem: failed to load ${libraryPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const s = lib.symbols;
+
+  const glLockArraysEXT = resolveGlLockArraysEXT(libraryPath, getProcAddress);
+  const glUnlockArraysEXT = resolveGlUnlockArraysEXT(libraryPath, getProcAddress);
+  const glPointParameterfEXT = resolveGlPointParameterfEXT(libraryPath, getProcAddress);
+  const glPointParameterfvEXT = resolveGlPointParameterfvEXT(libraryPath, getProcAddress);
+  const glColorTableEXT = resolveGlColorTableEXT(libraryPath, getProcAddress);
+  const glMTexCoord2fSGIS = resolveGlMTexCoord2fSGIS(libraryPath, getProcAddress);
+  const glSelectTextureSGIS = resolveGlSelectTextureSGIS(libraryPath, getProcAddress);
   return {
     qglAlphaFunc: (func, ref) => s.glAlphaFunc(func, ref),
     qglArrayElement: (i) => s.glArrayElement(i),
@@ -440,7 +565,7 @@ export function loadQGLFromSystem(): QGL {
     qglColor4fv: (v) => s.glColor4fv(v),
     qglColor4ubv: (v) => s.glColor4ubv(v),
     qglColorPointer: (size, type, stride, pointer) => s.glColorPointer(size, type, stride, pointer),
-    qglColorTableEXT: (target, internalformat, width, format, type, table) => s.glColorTableEXT(target, internalformat, width, format, type, table),
+    qglColorTableEXT: glColorTableEXT ? (target, internalformat, width, format, type, table) => glColorTableEXT(target, internalformat, width, format, type, table) : () => {},
     qglCullFace: (mode) => s.glCullFace(mode),
     qglDeleteTextures: (n, textures) => s.glDeleteTextures(n, textures),
     qglDepthFunc: (func) => s.glDepthFunc(func),
@@ -466,12 +591,12 @@ export function loadQGLFromSystem(): QGL {
     },
     qglLoadIdentity: () => s.glLoadIdentity(),
     qglLoadMatrixf: (m) => s.glLoadMatrixf(m),
-    qglLockArraysEXT: (first, count) => s.glLockArraysEXT(first, count),
+    qglLockArraysEXT: glLockArraysEXT ? (first, count) => glLockArraysEXT(first, count) : () => {},
     qglMatrixMode: (mode) => s.glMatrixMode(mode),
-    qglMTexCoord2fSGIS: (target, sVal, tVal) => s.glMTexCoord2fSGIS(target, sVal, tVal),
+    qglMTexCoord2fSGIS: glMTexCoord2fSGIS ? (target, sVal, tVal) => glMTexCoord2fSGIS(target, sVal, tVal) : () => {},
     qglOrtho: (left, right, bottom, top, zNear, zFar) => s.glOrtho(left, right, bottom, top, zNear, zFar),
-    qglPointParameterfEXT: (param, value) => s.glPointParameterfEXT(param, value),
-    qglPointParameterfvEXT: (param, value) => s.glPointParameterfvEXT(param, value),
+    qglPointParameterfEXT: glPointParameterfEXT ? (param, value) => glPointParameterfEXT(param, value) : () => {},
+    qglPointParameterfvEXT: glPointParameterfvEXT ? (param, value) => glPointParameterfvEXT(param, value) : () => {},
     qglPointSize: (size) => s.glPointSize(size),
     qglPolygonMode: (face, mode) => s.glPolygonMode(face, mode),
     qglPopMatrix: () => s.glPopMatrix(),
@@ -480,7 +605,7 @@ export function loadQGLFromSystem(): QGL {
     qglRotatef: (angle, x, y, z) => s.glRotatef(angle, x, y, z),
     qglScalef: (x, y, z) => s.glScalef(x, y, z),
     qglScissor: (x, y, width, height) => s.glScissor(x, y, width, height),
-    qglSelectTextureSGIS: (target) => s.glSelectTextureSGIS(target),
+    qglSelectTextureSGIS: glSelectTextureSGIS ? (target) => glSelectTextureSGIS(target) : () => {},
     qglShadeModel: (mode) => s.glShadeModel(mode),
     qglTexCoord2f: (sVal, tVal) => s.glTexCoord2f(sVal, tVal),
     qglTexEnvf: (target, pname, param) => s.glTexEnvf(target, pname, param),
@@ -490,7 +615,7 @@ export function loadQGLFromSystem(): QGL {
     qglTexSubImage2D: (target, level, xoffset, yoffset, width, height, format, type, pixels) =>
       s.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels),
     qglTranslatef: (x, y, z) => s.glTranslatef(x, y, z),
-    qglUnlockArraysEXT: () => s.glUnlockArraysEXT(),
+    qglUnlockArraysEXT: glUnlockArraysEXT ? () => glUnlockArraysEXT() : () => {},
     qglVertex2f: (x, y) => s.glVertex2f(x, y),
     qglVertex3f: (x, y, z) => s.glVertex3f(x, y, z),
     qglVertex3fv: (v) => s.glVertex3fv(v),
