@@ -178,7 +178,7 @@ describe("CheckDMRules", () => {
     expect(() => CheckDMRules()).not.toThrow();
   });
 
-  test("timelimit hit calls gi.bprintf and hands off to EndDMLevel (blocked on BeginIntermission pending stub)", () => {
+  test("timelimit hit calls gi.bprintf and runs EndDMLevel through BeginIntermission", () => {
     resetGameCvars();
     level.clear();
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
@@ -188,24 +188,19 @@ describe("CheckDMRules", () => {
     gameCvars.timelimit = fakeCvar(1); // 1 minute
     level.time = 61; // >= 1*60
     level.mapname = "base1";
-    // world + one free slot so G_Spawn (g_utils.c, already ported) can
-    // allocate the fallback target_changelevel edict.
-    const edicts = [new EdictT(), new EdictT()];
+    const spot = new EdictT();
+    spot.inuse = true;
+    spot.classname = "info_player_intermission";
+    const edicts = [new EdictT(), new EdictT(), spot];
     SetGEdicts(edicts);
     globals.num_edicts = edicts.length;
 
-    let threw: unknown;
-    try {
-      CheckDMRules();
-    } catch (err) {
-      threw = err;
-    }
-    expect(threw).toBeInstanceOf(PendingPort);
-    expect((threw as PendingPort).message).toBe("not yet ported: p_hud.c:BeginIntermission");
+    expect(() => CheckDMRules()).not.toThrow();
     expect(calls.bprintf).toEqual([[2, "Timelimit hit.\n"]]);
+    expect(level.intermissiontime).toBe(61);
   });
 
-  test("fraglimit hit calls gi.bprintf and hands off to EndDMLevel (blocked on BeginIntermission pending stub)", () => {
+  test("fraglimit hit calls gi.bprintf and runs EndDMLevel through BeginIntermission", () => {
     resetGameCvars();
     level.clear();
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
@@ -219,20 +214,30 @@ describe("CheckDMRules", () => {
 
     game.clients = [new GClientT()];
     game.clients[0].resp.score = 5;
+    level.time = 5;
 
-    // world, the one player slot (inuse), and a free slot for G_Spawn.
-    const edicts = [new EdictT(), new EdictT(), new EdictT()];
+    // world, the one player slot (inuse), a free slot for G_Spawn, and an
+    // intermission spot for BeginIntermission.
+    const spot = new EdictT();
+    spot.inuse = true;
+    spot.classname = "info_player_intermission";
+    const edicts = [new EdictT(), new EdictT(), new EdictT(), spot];
     edicts[1].inuse = true;
+    edicts[1].client = new GClientT();
+    // BeginIntermission respawns dead clients first (C behavior); keep the
+    // fabricated player alive so the test stays on the intermission path.
+    edicts[1].health = 1;
     SetGEdicts(edicts);
     globals.num_edicts = edicts.length;
 
-    expect(() => CheckDMRules()).toThrow(PendingPort);
+    expect(() => CheckDMRules()).not.toThrow();
     expect(calls.bprintf).toEqual([[2, "Fraglimit hit.\n"]]);
+    expect(level.intermissiontime).toBe(5);
   });
 });
 
 describe("EndDMLevel", () => {
-  test("DF_SAME_LEVEL branch spawns the changelevel target and is blocked on BeginIntermission (p_hud.c pending stub)", () => {
+  test("DF_SAME_LEVEL branch spawns the changelevel target and begins intermission", () => {
     resetGameCvars();
     level.clear();
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
@@ -240,44 +245,42 @@ describe("EndDMLevel", () => {
 
     gameCvars.dmflags = fakeCvar(DF_SAME_LEVEL);
     level.mapname = "base1";
-    const edicts = [new EdictT(), new EdictT()];
+    level.time = 3;
+    const spot = new EdictT();
+    spot.inuse = true;
+    spot.classname = "info_player_intermission";
+    const edicts = [new EdictT(), new EdictT(), spot];
     SetGEdicts(edicts);
     globals.num_edicts = edicts.length;
 
-    try {
-      EndDMLevel();
-      throw new Error("expected EndDMLevel to throw");
-    } catch (err) {
-      if (!(err instanceof PendingPort)) throw err;
-      expect(err.message).toBe("not yet ported: p_hud.c:BeginIntermission");
-    }
-    // CreateTargetChangeLevel ran far enough to configure the spawned edict
-    // before BeginIntermission (its caller) threw.
+    expect(() => EndDMLevel()).not.toThrow();
     expect(edicts[1].classname).toBe("target_changelevel");
     expect(level.nextmap).toBe(level.mapname);
+    expect(level.intermissiontime).toBe(3);
   });
 
-  test("finds an existing target_changelevel edict via G_Find (g_utils.c, already ported) and hands it to BeginIntermission", () => {
+  test("finds an existing target_changelevel edict via G_Find and hands it to BeginIntermission", () => {
     resetGameCvars();
     level.clear();
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
     GetGameAPI(buildFakeImports(calls));
 
     level.mapname = "base1";
+    level.time = 7;
     const changelevelEnt = new EdictT();
     changelevelEnt.inuse = true;
     changelevelEnt.classname = "target_changelevel";
-    const edicts = [new EdictT(), changelevelEnt];
+    changelevelEnt.map = "base2";
+    const spot = new EdictT();
+    spot.inuse = true;
+    spot.classname = "info_player_intermission";
+    const edicts = [new EdictT(), changelevelEnt, spot];
     SetGEdicts(edicts);
     globals.num_edicts = edicts.length;
 
-    try {
-      EndDMLevel();
-      throw new Error("expected EndDMLevel to throw");
-    } catch (err) {
-      if (!(err instanceof PendingPort)) throw err;
-      expect(err.message).toBe("not yet ported: p_hud.c:BeginIntermission");
-    }
+    expect(() => EndDMLevel()).not.toThrow();
+    expect(level.intermissiontime).toBe(7);
+    expect(level.changemap).toBe("base2");
   });
 });
 
@@ -312,7 +315,7 @@ describe("ClientEndServerFrames", () => {
     expect(() => ClientEndServerFrames()).not.toThrow();
   });
 
-  test("calls into ClientEndServerFrame (p_view.c pending stub) for an active client edict", () => {
+  test("runs ClientEndServerFrame for an active client edict", () => {
     resetGameCvars();
     gameCvars.maxclients = fakeCvar(1);
     const world = new EdictT();
@@ -321,7 +324,7 @@ describe("ClientEndServerFrames", () => {
     player.client = new GClientT();
     SetGEdicts([world, player]);
 
-    expect(() => ClientEndServerFrames()).toThrow(PendingPort);
+    expect(() => ClientEndServerFrames()).not.toThrow();
   });
 });
 
@@ -349,7 +352,7 @@ describe("ExitLevel", () => {
     expect(level.intermissiontime).toBe(0);
   });
 
-  test("health-clamp loop is blocked by ClientEndServerFrame (p_view.c pending stub), which runs first", () => {
+  test("health-clamp loop clamps player health to max after ClientEndServerFrame runs", () => {
     resetGameCvars();
     level.clear();
     const calls: RecordedCalls = { bprintf: [], AddCommandString: [] };
@@ -368,24 +371,11 @@ describe("ExitLevel", () => {
     player.health = 150;
     SetGEdicts([world, player]);
 
-    // ExitLevel builds the command and resets intermission state *before*
-    // calling ClientEndServerFrames, so those effects are still observable
-    // even though the function ultimately throws when it reaches the
-    // pending ClientEndServerFrame stub -- the health clamp below it is
-    // unreachable until p_view.ts lands.
-    let threw: unknown;
-    try {
-      ExitLevel();
-    } catch (err) {
-      threw = err;
-    }
-
-    expect(threw).toBeInstanceOf(PendingPort);
-    expect((threw as PendingPort).message).toBe("not yet ported: p_view.c:ClientEndServerFrame");
+    expect(() => ExitLevel()).not.toThrow();
     expect(calls.AddCommandString).toEqual(['gamemap "base2"\n']);
     expect(level.changemap).toBeNull();
     expect(level.exitintermission).toBe(0);
     expect(level.intermissiontime).toBe(0);
-    expect(player.health).toBe(150); // unreached: clamp loop never runs
+    expect(player.health).toBe(100); // clamp loop ran
   });
 });

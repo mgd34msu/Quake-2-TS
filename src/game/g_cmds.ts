@@ -38,7 +38,6 @@ import { ChaseNext, ChasePrev } from "./g_chase";
 import { Add_Ammo, FindItem, ITEM_INDEX, itemlist, SpawnItem, Touch_Item } from "./g_items";
 import { G_FreeEdict, G_Spawn } from "./g_utils";
 import { player_die } from "./p_client";
-import { PendingPort } from "../qcommon/pending";
 
 // m_player.h's FRAME_* animation-frame constants are not ported anywhere yet
 // (m_player.h/p_view.c's frame table is a separate, not-yet-landed unit, and
@@ -752,19 +751,7 @@ export function Cmd_PlayerList_f(ent: EdictT): void {
   gi.cprintf(ent, PRINT_HIGH, text);
 }
 
-// Cmd_Help_f and Cmd_Score_f are attributed by g_local.h's prototype block
-// to g_cmds.c, but grepping the real C tree shows both are actually defined
-// in p_hud.c (`void Cmd_Score_f`/`void Cmd_Help_f` in p_hud.c). p_hud.ts is
-// out of this unit's SCOPE and does not export them yet, so ClientCommand's
-// dispatch keeps local PendingPort fallbacks naming their true home.
-// Follow-up: once p_hud.ts ports Cmd_Score_f/Cmd_Help_f, import them from
-// there and delete these two.
-function Cmd_Help_f(_ent: EdictT): void {
-  throw new PendingPort("p_hud.c:Cmd_Help_f");
-}
-function Cmd_Score_f(_ent: EdictT): void {
-  throw new PendingPort("p_hud.c:Cmd_Score_f");
-}
+import { Cmd_Help_f, Cmd_Score_f } from "./p_hud";
 
 /*
 =================
