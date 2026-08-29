@@ -31,6 +31,12 @@ export const GAME_API_VERSION = 3;
 export const SVF_NOCLIENT = 0x00000001; // don't send entity to clients, even if it has effects
 export const SVF_DEADMONSTER = 0x00000002; // treat as CONTENTS_DEADMONSTER for collision
 export const SVF_MONSTER = 0x00000004; // treat as CONTENTS_MONSTER for collision
+// ctf/game.h: entity is a simple projectile, used for network optimization.
+// If an entity is a projectile, the model index/x/y/z/pitch/yaw are sent,
+// encoded into seven (or eight) bytes to speed up projectiles. Currently
+// only the hyperblaster makes use of this; use for items that are moving
+// with a constant velocity that doesn't change direction or model.
+export const SVF_PROJECTILE = 0x00000008;
 
 // edict->solid values
 export enum SolidT {

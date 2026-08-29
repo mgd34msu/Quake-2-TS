@@ -17,6 +17,12 @@ import {
   PmoveStateT,
 } from "../shared/q_shared";
 import { type Edict, type GameExports, type GameImports, LinkT, MAX_ENT_CLUSTERS, SolidT } from "./game";
+// `pmenuhnd_t` is declared by ctf/p_menu.h and only referenced here as a
+// pointer field on gclient_s (`#include "p_menu.h"` at the top of ctf's
+// g_local.h). Importing it as a type only (erased at compile time) keeps
+// the runtime module graph a single direction the same way game.ts's
+// EdictT type-only import back into g_local.ts does.
+import type { PmenuHndT } from "./p_menu";
 
 // the "gameversion" client command will print this plus compile date
 export const GAMEVERSION = "baseq2";
@@ -216,6 +222,11 @@ export const WEAP_ROCKETLAUNCHER = 8;
 export const WEAP_HYPERBLASTER = 9;
 export const WEAP_RAILGUN = 10;
 export const WEAP_BFG = 11;
+// ctf/g_local.h: `#define WEAP_GRAPPLE 12`
+export const WEAP_GRAPPLE = 12;
+
+// ctf/g_local.h: `#define IT_TECH 64` (gitem_t->flags)
+export const IT_TECH = 64;
 
 export class GItemT {
   classname: string | null = null; // spawning name
@@ -292,6 +303,10 @@ export class LevelLocalsT {
   level_name = ""; // char[MAX_QPATH] -- the descriptive name (Outer Base, etc)
   mapname = ""; // char[MAX_QPATH] -- the server name (base1, etc)
   nextmap = ""; // char[MAX_QPATH] -- go here when fraglimit is hit
+  // ctf/g_local.h: `char forcemap[MAX_QPATH]; // go here` -- set by
+  // CTFWinElection/CTFWarp (g_ctf.ts) and consumed wherever the map-change
+  // unit reads it (not in this unit's SCOPE).
+  forcemap = "";
 
   // intermission state
   intermissiontime = 0; // time the intermission was started
@@ -468,6 +483,8 @@ export const MOD_TARGET_LASER = 30;
 export const MOD_TRIGGER_HURT = 31;
 export const MOD_HIT = 32;
 export const MOD_TARGET_BLASTER = 33;
+// ctf/g_local.h: `#define MOD_GRAPPLE 34`
+export const MOD_GRAPPLE = 34;
 export const MOD_FRIENDLY_FIRE = 0x8000000;
 
 // `extern int meansOfDeath;` -- a reassigned scalar global, not an object
@@ -475,6 +492,12 @@ export const MOD_FRIENDLY_FIRE = 0x8000000;
 // fields on their owning singleton or a small exported holder object") it
 // gets a one-field holder rather than a bare exported `let`.
 export const meansOfDeathHolder: { meansOfDeath: number } = { meansOfDeath: MOD_UNKNOWN };
+
+// `extern qboolean is_quad;` (ctf/g_local.h) -- another reassigned scalar
+// global, same holder-object treatment as meansOfDeathHolder above. Set by
+// g_combat.c's T_Damage (a g_combat.c ctf-delta not in this unit's SCOPE)
+// and read by the tech/weapon code this unit does port.
+export const isQuadHolder: { is_quad: boolean } = { is_quad: false };
 
 // item spawnflags
 export const ITEM_TRIGGER_SPAWN = 0x00000001;
@@ -568,11 +591,48 @@ export class ClientPersistantT {
   spectator = false; // client is a spectator
 }
 
+// ctf/g_ctf.h's `ghost_t` (`struct ghost_s`). g_local.h's `client_respawn_t`
+// forward-references it (`struct ghost_s *ghost;`) via ctf/g_local.h's
+// trailing `#include "g_ctf.h"`; defined here instead of in g_ctf.ts so
+// ClientRespawnT.ghost below does not need a reverse type-only import (the
+// same "helper's true source file differs from the mapping table" case
+// PORTING.md calls out for random()/crandom()).
+export class GhostT {
+  netname = ""; // char[16]
+  number = 0;
+
+  // stats
+  deaths = 0;
+  kills = 0;
+  caps = 0;
+  basedef = 0;
+  carrierdef = 0;
+
+  code = 0; // ghost code
+  team = 0; // team
+  score = 0; // frags at time of disconnect
+  ent: EdictT | null = null;
+}
+
 // client data that stays across deathmatch respawns
 export class ClientRespawnT {
   coop_respawn: ClientPersistantT = new ClientPersistantT(); // what to set client->pers to on a respawn
   enterframe = 0; // level.framenum the client entered the game
   score = 0; // frags, etc
+  // ctf/g_local.h: `ctf_team` stores a ctfteam_t value (CTF_NOTEAM/
+  // CTF_TEAM1/CTF_TEAM2, defined as CtfTeamT in g_ctf.ts); kept as a plain
+  // number here to avoid a value-import cycle with g_ctf.ts.
+  ctf_team = 0;
+  ctf_state = 0;
+  ctf_lasthurtcarrier = 0;
+  ctf_lastreturnedflag = 0;
+  ctf_flagsince = 0;
+  ctf_lastfraggedcarrier = 0;
+  id_state = false;
+  voted = false; // for elections
+  ready = false;
+  admin = false;
+  ghost: GhostT | null = null; // for ghost codes
   cmd_angles: Vec3 = vec3(); // angles sent over in the last command
 
   spectator = false; // client is a spectator
@@ -591,6 +651,11 @@ export class GClientT {
   old_pmove: PmoveStateT = new PmoveStateT(); // for detecting out-of-pmove changes
 
   showscores = false; // set layout stat
+  // ctf/g_local.h adds these two fields right after showscores (guarded by
+  // the file's `//ZOID` markers), ahead of the pre-existing showinventory
+  // field below.
+  inmenu = false; // in menu
+  menu: PmenuHndT | null = null; // current menu
   showinventory = false; // set layout stat
   showhelp = false;
   showhelpicon = false;
@@ -662,8 +727,21 @@ export class GClientT {
 
   respawn_time = 0; // can respawn when time > this
 
+  // ctf/g_local.h: `void *ctf_grapple` -- every call site in g_ctf.c treats
+  // this as `edict_t *` (the grapple hook entity), never a bare void*, so
+  // it is typed as the concrete `EdictT | null` here rather than `unknown`.
+  ctf_grapple: EdictT | null = null; // entity of grapple
+  // stores a ctfgrapplestate_t value (CtfGrapplestateT in g_ctf.ts); plain
+  // number for the same reason ctf_team is a plain number above.
+  ctf_grapplestate = 0; // true if pulling
+  ctf_grapplereleasetime = 0; // time of grapple release
+  ctf_regentime = 0; // regen tech
+  ctf_techsndtime = 0;
+  ctf_lasttechmsg = 0;
   chase_target: EdictT | null = null; // player we are chasing
   update_chase = false; // need to update chase info?
+  menutime = 0; // time to update menu
+  menudirty = false;
 
   // this structure is cleared on each PutClientInServer(), except for 'pers'
   clear(): void {
@@ -934,6 +1012,12 @@ export const gameCvars: {
   flood_persecond: CvarT | null;
   flood_waitdelay: CvarT | null;
   sv_maplist: CvarT | null;
+  // ctf/g_local.h: `extern cvar_t *capturelimit; extern cvar_t
+  // *instantweap;` -- externs, unlike the rest of g_ctf.c's cvars (ctf,
+  // ctf_forcejoin, competition, matchlock, ...), which stay as g_ctf.ts
+  // module-local `let`s since g_local.h never externs them.
+  capturelimit: CvarT | null;
+  instantweap: CvarT | null;
 } = {
   maxentities: null,
   deathmatch: null,
@@ -966,5 +1050,7 @@ export const gameCvars: {
   flood_persecond: null,
   flood_waitdelay: null,
   sv_maplist: null,
+  capturelimit: null,
+  instantweap: null,
 };
 
