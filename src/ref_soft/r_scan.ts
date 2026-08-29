@@ -6,27 +6,15 @@ GPL source file itself is named r_scan.c) -- GNU GPL v2 or later.
 r_local.h) and is exposed here only as a module-private function, per the
 pending stub's note.
 
-Cross-module mutable state (pointer→binding reshaping, reported in the unit
-report): r_local.h declares `cacheblock`/`cachewidth`, the ten `d_sdivz*`/
-`d_tdivz*`/`sadjust`/`tadjust`/`bbextent*` perspective gradients, the three
-`d_zistep*`/`d_ziorigin` z gradients, and `d_viewbuffer`/`r_screenwidth`/
-`d_pzbuffer`/`d_zwidth` as plain `extern` globals that r_edge.c (producer,
-via D_CalcGradients/D_BackgroundSurf/D_TurbulentSurf/D_SkySurf/D_SolidSurf)
-writes and r_scan.c (consumer, this file) reads every span. r_local.ts
-mirrors those as bare `export let` bindings, but ECMAScript modules make an
-imported `let` binding read-only from outside its declaring module -- verified
-directly (`bun` throws "Attempted to assign to readonly property" even
-through an untyped access) -- and r_local.ts (out of this unit's scope) has
-no setter functions for them, unlike its own `SetRefImports` precedent for
-`ri`. Since every writer of this specific state (r_edge.c's surface-filling
-functions) and every reader (this file's span drawers) both live inside
-this porting unit's three files, ownership of these fields is relocated
-here as local `let`s with exported `D_Set*` setter functions; r_edge.ts
-calls the setters instead of assigning bare globals, and this file's own
-span drawers read the locals directly. r_local.ts's identically-named
-exports become inert duplicates for this unit -- the coordinator should
-either delete them or grow real setters there and re-point r_edge.ts/
-r_scan.ts at them.
+Cross-module mutable state: r_local.h declares `cacheblock`/`cachewidth`, the
+ten `d_sdivz*`/`d_tdivz*`/`sadjust`/`tadjust`/`bbextent*` perspective
+gradients, the three `d_zistep*`/`d_ziorigin` z gradients, and `d_viewbuffer`/
+`r_screenwidth`/`d_pzbuffer`/`d_zwidth` as plain `extern` globals. This module
+owns them: an imported `let` binding is read-only to the importer (bun throws
+"Attempted to assign to readonly property"), so the writers -- r_edge.c's
+surface fillers (r_edge.ts), r_poly.c's R_PolygonCalculateGradients (r_poly.ts)
+and r_misc.c's R_SetupFrame/D_ViewChanged (r_misc.ts) -- go through the
+exported `D_Set*` setters, and the readers import the bindings directly.
 */
 
 import { AMP2, CYCLE, SPEED, WARP_WIDTH, type EspanT, blanktable, intsintable, r_newrefdef, r_refdef, r_warpbuffer, sintable, vid } from "./r_local";
@@ -45,19 +33,19 @@ export let r_screenwidth = 0;
 export let d_pzbuffer: Int16Array | null = null;
 export let d_zwidth = 0;
 
-let d_sdivzstepu = 0;
-let d_tdivzstepu = 0;
-let d_sdivzstepv = 0;
-let d_tdivzstepv = 0;
-let d_sdivzorigin = 0;
-let d_tdivzorigin = 0;
-let d_zistepu = 0;
-let d_zistepv = 0;
-let d_ziorigin = 0;
-let sadjust = 0;
-let tadjust = 0;
-let bbextents = 0;
-let bbextentt = 0;
+export let d_sdivzstepu = 0;
+export let d_tdivzstepu = 0;
+export let d_sdivzstepv = 0;
+export let d_tdivzstepv = 0;
+export let d_sdivzorigin = 0;
+export let d_tdivzorigin = 0;
+export let d_zistepu = 0;
+export let d_zistepv = 0;
+export let d_ziorigin = 0;
+export let sadjust = 0;
+export let tadjust = 0;
+export let bbextents = 0;
+export let bbextentt = 0;
 
 export function D_SetCacheSource(block: Uint8Array | null, width: number): void {
   cacheblock = block;
@@ -71,6 +59,12 @@ export function D_SetViewBuffer(buffer: Uint8Array | null, screenwidth: number):
 
 export function D_SetZBuffer(buffer: Int16Array | null, zwidth: number): void {
   d_pzbuffer = buffer;
+  d_zwidth = zwidth;
+}
+
+// D_ViewChanged (r_misc.ts) re-derives `d_zwidth` from vid.width without
+// reallocating the buffer.
+export function D_SetZBufferWidth(zwidth: number): void {
   d_zwidth = zwidth;
 }
 

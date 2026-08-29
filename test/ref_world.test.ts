@@ -10,7 +10,7 @@ import { CplaneT } from "../src/shared/q_shared";
 import { PLANE_X } from "../src/qcommon/qfiles";
 import type { DlightT } from "../src/client/ref";
 import { MnodeT, MleafT, MsurfaceT, ModelT, CONTENTS_NODE } from "../src/ref_soft/r_model";
-import { modelorg, r_drawsurf, rCvars, type ClipplaneT } from "../src/ref_soft/r_local";
+import { SetVisFrameCount, modelorg, r_drawsurf, rCvars, type ClipplaneT } from "../src/ref_soft/r_local";
 import { R_ClipEdge, r_leftenter, rKey } from "../src/ref_soft/r_rast";
 import { R_RecursiveWorldNode, c_drawnode, setWorldModelForTesting } from "../src/ref_soft/r_bsp";
 import { R_MarkLights, R_BuildLightMap, blocklights } from "../src/ref_soft/r_light";
@@ -51,6 +51,9 @@ describe("r_rast.ts -- R_ClipEdge", () => {
 
 describe("r_bsp.ts -- R_RecursiveWorldNode", () => {
   test("visits a fabricated node/leaf tree front-to-back from the viewpoint", () => {
+    // rule 13: the frame-render suite advances the shared visframecount;
+    // pin it so the fabricated tree's visframe=0 fields mean "not visited".
+    SetVisFrameCount(0);
     const root = new MnodeT();
     root.contents = CONTENTS_NODE;
     root.visframe = 0;

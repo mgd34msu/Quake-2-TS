@@ -34,36 +34,31 @@ still called from D_ViewChanged for structural fidelity. Dropped id386
 branch: the `Sys_MakeCodeWriteable`/`R_Surf8Patch`/`D_Aff8Patch` asm-patch
 calls.
 
-Cross-module mutable state deviation (same wall as r_bsp.ts/r_rast.ts/
-r_edge.ts's own reported copies -- see r_local.ts's `export let`s for
-`r_viewleaf`/`r_viewcluster`/`xcenter`/`ycenter`/`xscale`/`yscale`/
-`xscaleinv`/`yscaleinv`/`xscaleshrink`/`yscaleshrink`/`aliasxscale`/
-`aliasyscale`/`aliasxcenter`/`aliasycenter`/`verticalFieldOfView`/`xOrigin`/
-`yOrigin`/`d_minmip`): an ES module cannot reassign another module's
-imported `let` binding (TS2632), and r_local.ts has no setters for these.
-R_ViewChanged/R_SetupFrame write all of them every frame, so they are ported
-as module-local state here instead, with `r_viewleaf`/`r_viewcluster`
-exported (R_MarkLeaves in r_main.ts reads `r_viewcluster` back; R_LightPoint
-et al elsewhere would need the same read access but are out of this brief's
-SCOPE to rewire). r_edge.ts/r_rast.ts already read the *r_local.ts* copies
-of `xcenter`/`ycenter`/`xscale`/`xscaleinv`/`yscaleinv` for their own span
-math -- those stay stale (never observe this module's frame updates) until
-the coordinator consolidates the shadowed copies, exactly the gap already
-flagged by those two files' own header comments. Flagged as a follow-up.
+Cross-module mutable state: R_ViewChanged/R_SetupFrame recompute most of
+r_local.h's per-frame scalars every frame, and an imported `let` binding is
+read-only to the importer, so each one is written through its owner's setter:
+`xcenter`/`ycenter`/`xscale`/`yscale`/`xscaleinv`/`yscaleinv`/`xscaleshrink`/
+`yscaleshrink`/`aliasx*`/`aliasy*`/`verticalFieldOfView`/`xOrigin`/`yOrigin`
+through r_local.ts's grouped `R_SetViewScales`, `scale_for_mip`/`d_minmip`/
+`d_zrowbytes` through its `D_SetMipState`, `r_framecount`/`r_dowarp`/
+`r_viewleaf`/`r_viewcluster` through its individual setters; `d_viewbuffer`/
+`r_screenwidth`/`d_zwidth` through r_scan.ts's `D_SetViewBuffer`/
+`D_SetZBufferWidth`; `d_vrect*`/`d_pix_*` through r_part.ts's
+`D_SetParticleClipRect`/`D_SetParticlePixRange`; and the surface cache's
+`d_roverwrapped`/`d_initial_rover` through r_surf.ts's `D_SetInitialRover`.
+`r_viewleaf`/`r_viewcluster`/`r_framecount`/`r_dowarp`/`SetViewCluster` are
+re-exported here because r_main.ts already reaches them through this module.
 
-`d_viewbuffer`/`r_screenwidth`/`d_pzbuffer`/`d_zwidth` are the one case with
-a real cross-module setter already in place: r_scan.ts exports
-`D_SetViewBuffer`/`D_SetZBuffer` for exactly this purpose (its own header
-comment: "this file calls r_scan.ts's exported D_Set* setters instead of
-assigning bare globals"), so R_SetupFrame/D_ViewChanged route through those
-instead of adding a fourth local shadow.
+The C original assigns `d_minmip` from sw_mipcap at the end of R_SetupFrame,
+after R_ViewChanged has already run; here it is folded into D_ViewChanged's
+`D_SetMipState` call. Nothing between the two points reads it and the value
+comes from the same cvar either way, so the result is identical.
 
 `screenedge`/`view_clipplanes`/`pfrustum_indexes`/`vpn`/`vright`/`vup`/
 `modelorg`/`r_origin`/`base_vpn`/`base_vright`/`base_vup`/`r_refdef`/
 `d_scantable`/`zspantable`/`d_scalemip` are all r_local.ts `const` bindings
-whose *contents* (array elements / object properties) this file mutates in
-place -- that crosses the module boundary fine (only rebinding a `let`
-cannot), so no shadow is needed for any of these.
+whose *contents* this file mutates in place, which crosses the module
+boundary fine -- no setter is needed for any of these.
 */
 
 import { AngleVectors, DotProduct, VectorCopy, VectorNormalize, type Vec3, vec3 } from "../shared/math";
@@ -80,14 +75,26 @@ import {
   pfrustum_indexes,
   r_newrefdef,
   r_origin,
+  r_amodels_drawn,
+  r_dowarp,
+  r_framecount,
   r_refdef,
+  r_viewcluster,
+  r_viewleaf,
   r_warpbuffer,
   ri,
   rCvars,
-  sc_rover,
   screenedge,
-  type SurfcacheT,
+  scale_for_mip,
   sw_state,
+  xscale,
+  yscale,
+  D_SetMipState,
+  R_SetViewScales,
+  SetDowarp,
+  SetFrameCount,
+  SetViewCluster,
+  SetViewLeaf,
   view_clipplanes,
   vid,
   vpn,
@@ -99,11 +106,12 @@ import {
   YCENTERING,
   zspantable,
 } from "./r_local";
-import { Mod_PointInLeaf, type MleafT, type MplaneT } from "./r_model";
+import { Mod_PointInLeaf, type MplaneT } from "./r_model";
 import type * as RBspModule from "./r_bsp";
 import type * as RSurfModule from "./r_surf";
 import { Draw_Fill } from "./r_draw";
-import { D_SetViewBuffer, d_pzbuffer, d_zwidth, r_screenwidth } from "./r_scan";
+import { D_SetViewBuffer, D_SetZBufferWidth, d_pzbuffer, d_zwidth, r_screenwidth } from "./r_scan";
+import { D_SetParticleClipRect, D_SetParticlePixRange } from "./r_part";
 
 // import-cycle rule (PORTING.md): r_bsp.ts already statically imports
 // R_TransformFrustum from this file, and r_edge.ts (which r_surf.ts's own
@@ -125,58 +133,16 @@ function surfMod(): typeof RSurfModule {
 const NUM_MIPS = 4;
 const basemip: [number, number, number] = [1.0, 0.5 * 0.8, 0.25 * 0.8];
 
-// see this file's header comment on the cross-module mutable state
-// deviation: module-local shadows of r_local.h externs this file is the
-// sole writer of, since r_local.ts's own copies cannot be reassigned from
-// here.
-export let r_viewleaf: MleafT | null = null;
-export let r_viewcluster = 0;
+// `r_viewleaf`/`r_viewcluster`/`r_framecount`/`r_dowarp` are r_local.h
+// externs owned by r_local.ts; re-exported here because r_main.ts already
+// reaches them through this module.
+export { r_viewleaf, r_viewcluster, r_framecount, r_dowarp, SetViewCluster } from "./r_local";
 
-// R_NewMap (r_main.c, r_main.ts's SCOPE) also assigns `r_viewcluster = -1;`
-// directly; since both files need write access to this one and r_misc.ts
-// is the field's primary owner (R_SetupFrame writes it every frame), this
-// setter is the real cross-module wiring rather than a third shadow copy.
-export function SetViewCluster(v: number): void {
-  r_viewcluster = v;
-}
-
-let xcenter = 0;
-let ycenter = 0;
-let xscale = 0;
-let yscale = 0;
-let xscaleinv = 0;
-let yscaleinv = 0;
-let xscaleshrink = 0;
-let yscaleshrink = 0;
-let aliasxscale = 0;
-let aliasyscale = 0;
-let aliasxcenter = 0;
-let aliasycenter = 0;
-let verticalFieldOfView = 0;
-let xOrigin = 0;
-let yOrigin = 0;
-
-let d_minmip = 0;
 let d_aflatcolor = 0;
-let d_roverwrapped = false;
-let d_initial_rover: SurfcacheT | null = null;
-
-let d_zrowbytes = 0;
 
 // r_misc.c's `unsigned char *alias_colormap;` -- module-static, not an
 // r_local.h extern.
 let alias_colormap: Uint8Array | null = null;
-
-// R_RenderFrame (r_main.ts) reads this to decide whether to call
-// D_WarpScreen (r_scan.ts).
-export let r_dowarp = false;
-
-// r_local.h extern, incremented here (R_SetupFrame's first line in the C
-// original) for the same TS2632 reason as the other shadows above;
-// r_bsp.ts/r_light.ts already read *r_local.ts*'s own (never-incremented)
-// copy for their visframe/dlight bookkeeping, so this increment does not
-// reach them today -- same class of gap, flagged as a follow-up.
-export let r_framecount = 0;
 
 /*
 ================
@@ -186,6 +152,14 @@ Entirely `#if id386` in the C original (see file header comment) -- a true
 no-op on the portable path.
 ================
 */
+function d_minmipForCvar(): number {
+  const sw_mipcap = rCvars.sw_mipcap;
+  let v = sw_mipcap ? sw_mipcap.value | 0 : 0;
+  if (v > 3) v = 3;
+  else if (v < 0) v = 0;
+  return v;
+}
+
 function D_Patch(): void {
   // no-op on the portable (non-id386) path
 }
@@ -196,13 +170,19 @@ D_ViewChanged
 ================
 */
 export function D_ViewChanged(): void {
+  D_SetMipState(yscale > xscale ? yscale : xscale, d_minmipForCvar(), vid.width * 2);
+
+  D_SetZBufferWidth(vid.width);
+
   let d_pix_min = (r_refdef.vrect.width / 320) | 0;
   if (d_pix_min < 1) d_pix_min = 1;
 
   let d_pix_max = ((r_refdef.vrect.width / (320.0 / 4.0) + 0.5) | 0);
+  const d_pix_shift = 8 - ((r_refdef.vrect.width / 320.0 + 0.5) | 0);
   if (d_pix_max < 1) d_pix_max = 1;
 
-  d_zrowbytes = vid.width * 2;
+  D_SetParticlePixRange(d_pix_min, d_pix_max, d_pix_shift);
+  D_SetParticleClipRect(r_refdef.vrect.x, r_refdef.vrect.y, r_refdef.vrectright - d_pix_max, r_refdef.vrectbottom - d_pix_max);
 
   for (let i = 0; i < vid.height; i++) {
     d_scantable[i] = i * r_screenwidth;
@@ -225,13 +205,11 @@ export function D_ViewChanged(): void {
 =============
 R_PrintTimes
 
-`c_faceclip`/`r_polycount`/`r_drawnpolycount`/`c_surf` (part of the C
-format string) are r_rast.ts's/r_edge.ts's own local shadows of r_local.h
-externs (see this file's header comment on the general shape of that
-deviation) and are not reachable from here; the printed line is simplified
-to just the millisecond count. `r_time1` is r_main.c's own local captured
-at the top of R_RenderFrame -- `SetTimeRef` is the real cross-file setter
-(r_main.ts calls it), not a test-only shim.
+`c_faceclip`/`r_polycount` (part of the C format string) are r_rast.c
+file-scope counters with no r_local.h declaration, so the printed line is
+simplified to just the millisecond count -- reported deviation. `r_time1` is
+r_main.c's own local captured at the top of R_RenderFrame; `SetTimeRef` is the
+real cross-file setter (r_main.ts calls it), not a test-only shim.
 =============
 */
 let r_time1Ref = 0;
@@ -250,9 +228,9 @@ export function R_PrintTimes(): void {
 R_PrintDSpeeds
 
 The C format string's dp_time/rw_time/db_time/se_time/de_time/da_time
-fields are all r_local.h externs with no reachable writer from this file
-(see this file's own header comment) -- simplified to the overall
-millisecond count only.
+fields are r_local.h externs that nothing in this port ever writes (the
+per-stage Sys_Milliseconds captures around R_EdgeDrawing were dropped) --
+simplified to the overall millisecond count only. Reported deviation.
 =============
 */
 export function R_PrintDSpeeds(): void {
@@ -264,12 +242,10 @@ export function R_PrintDSpeeds(): void {
 =============
 R_PrintAliasStats
 
-`r_amodels_drawn` is r_local.ts's own never-incremented copy (R_AliasDrawModel,
-out of this brief's SCOPE, is still a PendingPort stub) -- printed as 0.
 =============
 */
 export function R_PrintAliasStats(): void {
-  ri.Con_Printf(PRINT_ALL, "0 polygon model drawn\n");
+  ri.Con_Printf(PRINT_ALL, `${r_amodels_drawn} polygon model drawn\n`);
 }
 
 /*
@@ -361,7 +337,7 @@ function R_ViewChanged(vr: { x: number; y: number; width: number; height: number
   r_refdef.vrect.height = vr.height;
 
   r_refdef.horizontalFieldOfView = 2 * Math.tan((r_newrefdef.fov_x / 360) * M_PI);
-  verticalFieldOfView = 2 * Math.tan((r_newrefdef.fov_y / 360) * M_PI);
+  const verticalFieldOfView = 2 * Math.tan((r_newrefdef.fov_y / 360) * M_PI);
 
   r_refdef.fvrectx = r_refdef.vrect.x;
   r_refdef.fvrectx_adj = r_refdef.vrect.x - 0.5;
@@ -385,8 +361,8 @@ function R_ViewChanged(vr: { x: number; y: number; width: number; height: number
   r_refdef.aliasvrectright = r_refdef.aliasvrect.x + r_refdef.aliasvrect.width;
   r_refdef.aliasvrectbottom = r_refdef.aliasvrect.y + r_refdef.aliasvrect.height;
 
-  xOrigin = r_refdef.xOrigin;
-  yOrigin = r_refdef.yOrigin;
+  const xOrigin = r_refdef.xOrigin;
+  const yOrigin = r_refdef.yOrigin;
 
   // values for perspective projection
   // if math were exact, the values would range from 0.5 to to range+0.5
@@ -394,20 +370,30 @@ function R_ViewChanged(vr: { x: number; y: number; width: number; height: number
   // the polygon rasterization will never render in the first row or column
   // but will definately render in the [range] row and column, so adjust the
   // buffer origin to get an exact edge to edge fill
-  xcenter = r_refdef.vrect.width * XCENTERING + r_refdef.vrect.x - 0.5;
-  aliasxcenter = xcenter;
-  ycenter = r_refdef.vrect.height * YCENTERING + r_refdef.vrect.y - 0.5;
-  aliasycenter = ycenter;
+  const xcenter = r_refdef.vrect.width * XCENTERING + r_refdef.vrect.x - 0.5;
+  const ycenter = r_refdef.vrect.height * YCENTERING + r_refdef.vrect.y - 0.5;
 
-  xscale = r_refdef.vrect.width / r_refdef.horizontalFieldOfView;
-  aliasxscale = xscale;
-  xscaleinv = 1.0 / xscale;
+  const xscaleLocal = r_refdef.vrect.width / r_refdef.horizontalFieldOfView;
+  const yscaleLocal = xscaleLocal;
+  const xscaleshrink = (r_refdef.vrect.width - 6) / r_refdef.horizontalFieldOfView;
 
-  yscale = xscale;
-  aliasyscale = yscale;
-  yscaleinv = 1.0 / yscale;
-  xscaleshrink = (r_refdef.vrect.width - 6) / r_refdef.horizontalFieldOfView;
-  yscaleshrink = xscaleshrink;
+  R_SetViewScales({
+    xcenter,
+    ycenter,
+    xscale: xscaleLocal,
+    yscale: yscaleLocal,
+    xscaleinv: 1.0 / xscaleLocal,
+    yscaleinv: 1.0 / yscaleLocal,
+    xscaleshrink,
+    yscaleshrink: xscaleshrink,
+    aliasxscale: xscaleLocal,
+    aliasyscale: yscaleLocal,
+    aliasxcenter: xcenter,
+    aliasycenter: ycenter,
+    verticalFieldOfView,
+    xOrigin,
+    yOrigin,
+  });
 
   // left side clip
   screenedge[0].normal[0] = -1.0 / (xOrigin * r_refdef.horizontalFieldOfView);
@@ -449,7 +435,7 @@ export function R_SetupFrame(): void {
     surfMod().D_FlushCaches(); // so all lighting changes
   }
 
-  r_framecount++;
+  SetFrameCount(r_framecount + 1);
 
   // build the transformation matrix for the given view angles
   VectorCopy(r_refdef.vieworg, modelorg);
@@ -459,15 +445,16 @@ export function R_SetupFrame(): void {
 
   // current viewleaf
   if (!(r_newrefdef.rdflags & RDF_NOWORLDMODEL)) {
-    r_viewleaf = Mod_PointInLeaf(r_origin, bspMod().r_worldmodel);
-    r_viewcluster = r_viewleaf.cluster;
+    const leaf = Mod_PointInLeaf(r_origin, bspMod().r_worldmodel);
+    SetViewLeaf(leaf);
+    SetViewCluster(leaf.cluster);
   }
 
   const sw_waterwarp = rCvars.sw_waterwarp;
   if (sw_waterwarp && sw_waterwarp.value && r_newrefdef.rdflags & RDF_UNDERWATER) {
-    r_dowarp = true;
+    SetDowarp(true);
   } else {
-    r_dowarp = false;
+    SetDowarp(false);
   }
 
   let vrect: { x: number; y: number; width: number; height: number };
@@ -504,13 +491,7 @@ export function R_SetupFrame(): void {
   VectorCopy(vup, base_vup);
 
   // d_setup
-  d_roverwrapped = false;
-  d_initial_rover = sc_rover;
-
-  const sw_mipcap = rCvars.sw_mipcap;
-  d_minmip = sw_mipcap ? sw_mipcap.value | 0 : 0;
-  if (d_minmip > 3) d_minmip = 3;
-  else if (d_minmip < 0) d_minmip = 0;
+  surfMod().D_SetInitialRover();
 
   const mipscale = rCvars.sw_mipscale ? rCvars.sw_mipscale.value : 1;
   for (let i = 0; i < NUM_MIPS - 1; i++) d_scalemip[i] = basemip[i] * mipscale;
@@ -578,9 +559,9 @@ export function WritePCX(data: Uint8Array, width: number, height: number, rowbyt
   return Uint8Array.from(out);
 }
 
-// R_ScreenShot_f writes through this hook when set -- RefImports has no
-// file-write entry point (see this file's header comment / unit report),
-// so the actual disk write is left to whatever the integrate unit wires in.
+// R_ScreenShot_f writes through this hook: RefImports has no file-write entry
+// point, and PORTING.md confines node:fs to src/platform, so the disk write
+// itself lives in src/platform/vid.ts (VID_Init installs it here).
 export type ScreenshotWriterT = (path: string, data: Uint8Array) => void;
 let screenshotWriter: ScreenshotWriterT | null = null;
 export function SetScreenshotWriter(fn: ScreenshotWriterT | null): void {
@@ -591,9 +572,9 @@ export function SetScreenshotWriter(fn: ScreenshotWriterT | null): void {
 ==================
 R_ScreenShot_f
 
-RefImports has neither a raw file-write nor a Sys_Mkdir entry point (see
-this file's header comment), so the `scrnshot` directory is never created
-here (dropped -- reported deviation) and the free-filename probe uses
+RefImports has neither a raw file-write nor a Sys_Mkdir entry point, so the
+`scrnshot` directory is created by the platform writer instead of here
+(reported deviation) and the free-filename probe uses
 `ri.FS_LoadFile`'s documented "-1 length means the file does not exist"
 sentinel in place of `fopen(checkname, "r")`.
 ==================

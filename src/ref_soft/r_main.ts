@@ -34,47 +34,31 @@ pair rather than registering a command with nothing behind it.
 `#if id386` branches (Sys_MakeCodeWriteable/Sys_SetFPCW in R_Init) are
 dropped per PORTING.md's portable-path rule.
 
-Cross-module mutable state deviations (same wall as every other landed
-ref_soft sibling -- r_local.h externs this file is the C sole-writer of,
-with no setter on r_local.ts's own copy, so an ES module cannot reassign it
-from here, TS2632): `currentmodel`/`currententity`/`r_pcurrentvertbase`
-(R_DrawEntitiesOnList/R_DrawBEntitiesOnList's writes -- a *third* shadow of
-the same three fields r_bsp.ts and r_local.ts each already carry their own
-copy of; see r_bsp.ts's header comment for the precedent), `insubmodel`/
-`r_clipflags`/`r_dlightframecount` (written by R_DrawBEntitiesOnList, read
-by r_rast.ts's/r_light.ts's *r_local.ts*-sourced copies, which therefore
-never observe these writes), `r_cnumsurfs`/`surfaces`/`surface_p`/
-`surf_max`/`r_surfsonstack`/`r_maxedgesseen`/`r_maxsurfsseen`/
-`r_numallocatededges`/`auxedges`/`r_edges` (R_NewMap/R_EdgeDrawing's writes
--- r_edge.ts's R_BeginEdgeFrame/R_ScanEdges read *r_local.ts*'s copies of
-`surfaces`/`r_numallocatededges`, so this file's local shadows do not reach
-them either), `r_notexture_mip` (R_InitTextures's write -- r_image.ts reads
-r_local.ts's copy as its it_wall-not-found fallback), `r_aliasuvscale`
-(hardcoded to 1.0 by r_misc.ts's R_ViewChanged already, per that file's own
-comment, so this shadow's value is never actually consulted), `r_oldviewcluster`/
-`r_visframecount` (R_MarkLeaves's sole read/write, so no shadow conflict --
-kept local, r_bsp.ts's R_RecursiveWorldNode reads *r_local.ts*'s
-never-updated copy of `r_visframecount` for its own visframe compares, same
-class of gap). All of these are reported as follow-ups for the RS-integrate
-unit, which owns adding real setters to r_local.ts (or relocating the
-declarations) so every shadow collapses back into one. `r_viewcluster`
-(R_NewMap's `r_viewcluster = -1;`) is the one exception with a real
-cross-module setter already wired: r_misc.ts's `SetViewCluster`, since that
-file is this same brief's other half and owns the field the rest of the
-frame (R_SetupFrame) writes.
+Cross-module mutable state: every r_local.h extern r_main.c is the C sole
+writer of is owned by r_local.ts and assigned through its setters, since an
+imported `let` binding is read-only to the importer. That covers
+`currentmodel`/`currententity` (R_DrawEntitiesOnList/R_DrawBEntitiesOnList),
+`insubmodel`/`r_clipflags`/`r_dlightframecount` (R_DrawBEntitiesOnList, read
+by r_rast.ts/r_light.ts), `r_cnumsurfs`/`surfaces`/`surface_p`/`surf_max`/
+`r_surfsonstack`/`r_maxedgesseen`/`r_maxsurfsseen`/`r_numallocatededges`/
+`auxedges`/`r_edges` (R_NewMap/R_EdgeDrawing, consumed by r_edge.ts's
+R_BeginEdgeFrame/R_ScanEdges and filled by r_rast.ts), `r_notexture_mip`
+(R_InitTextures, read by r_image.ts/r_model.ts as the texture-not-found
+fallback), `r_aliasuvscale`, and `r_oldviewcluster`/`r_visframecount`
+(R_MarkLeaves, read by r_bsp.ts's R_RecursiveWorldNode). `r_viewcluster` is
+written through r_misc.ts's `SetViewCluster`, which forwards to the same
+r_local.ts binding.
 
-`R_SetSky`'s writes to the real (rendering) sky texinfo array are a
-blocking integration gap, not just a staleness one: the C global
-`r_skytexinfo[6]` this function fills in is r_rast.c's storage (r_rast.ts
-already ported it as a module-private, unexported `const` array -- see that
-file's own R_InitSkyBox comment), so nothing outside r_rast.ts can reach the
-instances R_InitSkyBox/R_RenderFace actually draw with. Ported against
-r_local.ts's own `sky_texinfo` export instead (lazily allocating a fresh
-MtexinfoT per slot the first time R_SetSky runs, since r_local.ts seeds it
-with all-null placeholders) so the function has *something* real to write
-into and this unit's test can observe it; reported as a follow-up for the
-coordinator to have r_rast.ts export `r_skytexinfo` (or a setter) so
-R_SetSky's writes reach the actual render path.
+R_NewMap/R_EdgeDrawing's C bodies swap between malloc'd and stack-array
+surface/edge buffers. `surf_max`/`edge_max` are end *pointers* in C and index
+bounds here, and the C biases the surface array with `surfaces--` so index 0
+is a dummy; the port allocates one extra slot instead. The `ledges`/`lsurfs`
+stack arrays live at the same address every frame in C, so they are allocated
+once per size here rather than per frame.
+
+`R_SetSky` fills in `r_skytexinfo`, which r_rast.ts owns and exports -- the
+same array R_InitSkyBox/R_RenderFace draw with (r_local.h calls it
+`sky_texinfo`).
 
 `R_ScreenShot_f`/`WritePCX`/`SetScreenshotWriter` live in r_misc.ts (r_misc.c
 is their true C home); this file just wires `R_Register`'s
@@ -122,15 +106,43 @@ import {
   rCvars,
   SetRefImports,
   sintable,
-  sky_texinfo,
   sw_state,
+  auxedges,
+  currententity,
+  currentmodel,
+  r_cnumsurfs,
+  r_numallocatededges,
+  r_oldviewcluster,
+  r_surfsonstack,
+  r_visframecount,
+  surf_max,
+  surfaces,
+  SetAliasUvScale,
+  SetAuxEdges,
+  SetClipflags,
+  SetCnumSurfs,
+  SetCurrentEntity,
+  SetCurrentModel,
+  SetDlightFrameCount,
+  SetEdges,
+  SetInsubmodel,
+  SetMaxEdgesSeen,
+  SetMaxSurfsSeen,
+  SetNotextureMip,
+  SetNumAllocatedEdges,
+  SetOldViewCluster,
+  SetSurfMax,
+  SetSurfaceP,
+  SetSurfaces,
+  SetSurfsOnStack,
+  SetVisFrameCount,
+  EdgeT,
+  SurfT,
   view_clipplanes,
   vid,
   vpn,
   vright,
   vup,
-  type EdgeT,
-  type SurfT,
 } from "./r_local";
 import {
   isMleaf,
@@ -140,7 +152,7 @@ import {
   Mod_Modellist_f,
   ModtypeT,
   ModelT,
-  MtexinfoT,
+  ImageT,
   R_BeginRegistration,
   R_EndRegistration,
   R_RegisterModel,
@@ -151,6 +163,7 @@ import { r_worldmodel, R_DrawSolidClippedSubmodelPolygons, R_DrawSubmodelPolygon
 import { Draw_Char, Draw_FadeScreen, Draw_Fill, Draw_FindPic, Draw_GetPicSize, Draw_InitLocal, Draw_Pic, Draw_StretchPic, Draw_StretchRaw, Draw_TileClear } from "./r_draw";
 import { LoadPCX, R_FindImage, R_InitImages, R_RegisterSkin, R_ShutdownImages } from "./r_image";
 import { R_BeginEdgeFrame, R_ScanEdges, R_SurfacePatch } from "./r_edge";
+import { r_skytexinfo } from "./r_rast";
 import { D_FlushCaches, R_InitCaches } from "./r_surf";
 import { D_SetZBuffer, D_WarpScreen } from "./r_scan";
 import { R_LightPoint, R_PushDlights } from "./r_light";
@@ -163,34 +176,10 @@ import { SWimp_AppActivate, SWimp_EndFrame, SWimp_Init, SWimp_SetMode, SWimp_Set
 import { Sys_Milliseconds } from "../platform/sys";
 
 //===================================================================
-// see this file's header comment: module-local shadows of r_local.h
-// externs r_main.c is the sole C writer of.
 
 export let skyname = "";
 export let skyrotate = 0;
 export const skyaxis: Vec3 = vec3();
-
-let currentmodel: ModelT | null = null;
-let currententity: EntityT | null = null;
-
-let r_aliasuvscale = 0;
-
-let insubmodel = false;
-let r_clipflags = 0;
-let r_dlightframecount = 0;
-
-let r_oldviewcluster = -1;
-let r_visframecount = 0;
-
-let r_cnumsurfs = 0;
-let r_surfsonstack = false;
-let r_maxedgesseen = 0;
-let r_maxsurfsseen = 0;
-let r_numallocatededges = 0;
-let auxedges: EdgeT[] | null = null;
-let surfaces: SurfT[] | null = null;
-let surface_p = 0;
-let surf_max = 0;
 
 const MINSURFACES = 1000; // NUMSTACKSURFACES (r_local.ts)
 const MINEDGES = 2000; // NUMSTACKEDGES (r_local.ts)
@@ -208,15 +197,8 @@ let sw_lockpvs: CvarT | null = null;
 // C overlays image_t's header directly onto a raw byte buffer
 // (`r_notexture_mip = (image_t *)&r_notexture_buffer`) and hand-computes
 // pixel offsets into the tail of that same buffer; there is no pointer
-// arithmetic in TS, so this is ported as a plain shape carrying the same
-// width/height/four-mip-level pixel data instead of a byte-buffer overlay.
-interface NotextureMipT {
-  width: number;
-  height: number;
-  pixels: Uint8Array[];
-}
-let r_notexture_mip: NotextureMipT | null = null;
-
+// arithmetic in TS, so the same width/height/four-mip-level data is carried
+// by a real ImageT instead of a byte-buffer overlay.
 /*
 ==================
 R_InitTextures
@@ -237,7 +219,13 @@ function R_InitTextures(): void {
     }
   }
 
-  r_notexture_mip = { width: 16, height: 16, pixels };
+  const image = new ImageT();
+  image.name = "notexture";
+  image.type = ImagetypeT.it_wall;
+  image.width = 16;
+  image.height = 16;
+  image.pixels = pixels;
+  SetNotextureMip(image);
 }
 
 /*
@@ -324,7 +312,7 @@ export function R_Init(hInstance: unknown, wndProc: unknown): boolean {
 
   // #if id386: Sys_MakeCodeWriteable / Sys_SetFPCW -- dropped, portable path
 
-  r_aliasuvscale = 1.0;
+  SetAliasUvScale(1.0);
 
   R_Register();
   Draw_GetPalette();
@@ -344,8 +332,7 @@ R_Shutdown
 ===============
 */
 export function R_Shutdown(): void {
-  // free z buffer -- r_scan.ts owns the real buffer/setter; nothing to null
-  // out on this side (see file header comment)
+  // free z buffer -- r_scan.ts owns the buffer; nothing to null out here
 
   // free surface cache
   D_FlushCaches();
@@ -368,34 +355,52 @@ R_NewMap
 export function R_NewMap(): void {
   SetViewCluster(-1);
 
-  r_cnumsurfs = rCvars.sw_maxsurfs ? rCvars.sw_maxsurfs.value | 0 : 0;
+  let cnumsurfs = rCvars.sw_maxsurfs ? rCvars.sw_maxsurfs.value | 0 : 0;
 
-  if (r_cnumsurfs <= MINSURFACES) r_cnumsurfs = MINSURFACES;
+  if (cnumsurfs <= MINSURFACES) cnumsurfs = MINSURFACES;
+  SetCnumSurfs(cnumsurfs);
 
-  if (r_cnumsurfs > NUMSTACKSURFACES) {
+  if (cnumsurfs > NUMSTACKSURFACES) {
     // surface 0 doesn't really exist; it's just a dummy because index 0
-    // is used to indicate no edge attached to surface
-    surfaces = null;
-    surface_p = 0;
-    surf_max = r_cnumsurfs;
-    r_surfsonstack = false;
+    // is used to indicate no edge attached to surface (C biases the
+    // malloc'd pointer with `surfaces--`; here the dummy is a real slot 0
+    // and `surf_max` is the index bound rather than an end pointer)
+    SetSurfaces(allocSurfaces(cnumsurfs));
+    SetSurfaceP(0);
+    SetSurfMax(cnumsurfs);
+    SetSurfsOnStack(false);
     R_SurfacePatch();
   } else {
-    r_surfsonstack = true;
+    SetSurfsOnStack(true);
   }
 
-  r_maxedgesseen = 0;
-  r_maxsurfsseen = 0;
+  SetMaxEdgesSeen(0);
+  SetMaxSurfsSeen(0);
 
-  r_numallocatededges = rCvars.sw_maxedges ? rCvars.sw_maxedges.value | 0 : 0;
+  let numallocatededges = rCvars.sw_maxedges ? rCvars.sw_maxedges.value | 0 : 0;
 
-  if (r_numallocatededges < MINEDGES) r_numallocatededges = MINEDGES;
+  if (numallocatededges < MINEDGES) numallocatededges = MINEDGES;
+  SetNumAllocatedEdges(numallocatededges);
 
-  if (r_numallocatededges <= NUMSTACKEDGES) {
-    auxedges = null;
+  if (numallocatededges <= NUMSTACKEDGES) {
+    SetAuxEdges(null);
   } else {
-    auxedges = null; // see file header comment: not reachable by r_edge.ts either way
+    SetAuxEdges(allocEdges(numallocatededges));
   }
+}
+
+// R_EdgeDrawing's `ledges`/`lsurfs` are C stack arrays reused at the same
+// address every frame; allocated once per size here rather than per frame.
+let stackEdges: EdgeT[] = [];
+let stackSurfaces: SurfT[] = [];
+
+function allocEdges(count: number): EdgeT[] {
+  return Array.from({ length: count }, () => new EdgeT());
+}
+
+function allocSurfaces(count: number): SurfT[] {
+  // one extra for the index-0 dummy -- see R_NewMap
+  return Array.from({ length: count + 1 }, () => new SurfT());
 }
 
 /*
@@ -413,8 +418,8 @@ function R_MarkLeaves(): void {
   // the pvs ends
   if (sw_lockpvs && sw_lockpvs.value) return;
 
-  r_visframecount++;
-  r_oldviewcluster = r_viewcluster;
+  SetVisFrameCount(r_visframecount + 1);
+  SetOldViewCluster(r_viewcluster);
 
   if (!r_worldmodel) return;
 
@@ -461,24 +466,26 @@ function R_DrawEntitiesOnList(): void {
 
   // all bmodels have already been drawn by the edge list
   for (let i = 0; i < r_newrefdef.num_entities; i++) {
-    currententity = r_newrefdef.entities[i];
+    const ent = r_newrefdef.entities[i];
+    SetCurrentEntity(ent);
 
-    if (currententity.flags & RF_TRANSLUCENT) {
+    if (ent.flags & RF_TRANSLUCENT) {
       translucent_entities = true;
       continue;
     }
 
-    drawOneEntity(currententity);
+    drawOneEntity(ent);
   }
 
   if (!translucent_entities) return;
 
   for (let i = 0; i < r_newrefdef.num_entities; i++) {
-    currententity = r_newrefdef.entities[i];
+    const ent = r_newrefdef.entities[i];
+    SetCurrentEntity(ent);
 
-    if (!(currententity.flags & RF_TRANSLUCENT)) continue;
+    if (!(ent.flags & RF_TRANSLUCENT)) continue;
 
-    drawOneEntity(currententity);
+    drawOneEntity(ent);
   }
 }
 
@@ -494,16 +501,16 @@ function drawOneEntity(ent: EntityT): void {
 
   const handle = ent.model;
   if (handle === null || !(handle instanceof ModelT)) {
-    currentmodel = null;
+    SetCurrentModel(null);
     R_DrawNullModel();
     return;
   }
 
-  currentmodel = handle;
+  SetCurrentModel(handle);
   VectorCopy(ent.origin, r_entorigin);
   VectorSubtract(r_origin, r_entorigin, modelorg);
 
-  switch (currentmodel.type) {
+  switch (handle.type) {
     case ModtypeT.mod_sprite:
       R_DrawSprite();
       break;
@@ -632,28 +639,29 @@ function R_DrawBEntitiesOnList(): void {
 
   const oldorigin: Vec3 = vec3();
   VectorCopy(modelorg, oldorigin);
-  insubmodel = true;
-  r_dlightframecount = r_framecount;
+  SetInsubmodel(true);
+  SetDlightFrameCount(r_framecount);
 
   const minmaxs = new Float32Array(6);
   const mins: Vec3 = vec3();
   const maxs: Vec3 = vec3();
 
   for (let i = 0; i < r_newrefdef.num_entities; i++) {
-    currententity = r_newrefdef.entities[i];
-    const handle = currententity.model;
+    const ent = r_newrefdef.entities[i];
+    SetCurrentEntity(ent);
+    const handle = ent.model;
     if (handle === null || !(handle instanceof ModelT)) continue;
-    currentmodel = handle;
-    if (currentmodel.nummodelsurfaces === 0) continue; // clip brush only
-    if (currententity.flags & RF_BEAM) continue;
-    if (currentmodel.type !== ModtypeT.mod_brush) continue;
+    SetCurrentModel(handle);
+    if (handle.nummodelsurfaces === 0) continue; // clip brush only
+    if (ent.flags & RF_BEAM) continue;
+    if (handle.type !== ModtypeT.mod_brush) continue;
 
     // see if the bounding box lets us trivially reject, also sets
     // trivial accept status
-    RotatedBBox(currentmodel.mins, currentmodel.maxs, currententity.angles, mins, maxs);
+    RotatedBBox(handle.mins, handle.maxs, ent.angles, mins, maxs);
     for (let j = 0; j < 3; j++) {
-      minmaxs[j] = mins[j] + currententity.origin[j];
-      minmaxs[3 + j] = maxs[j] + currententity.origin[j];
+      minmaxs[j] = mins[j] + ent.origin[j];
+      minmaxs[3 + j] = maxs[j] + ent.origin[j];
     }
 
     const clipflags = R_BmodelCheckBBox(minmaxs);
@@ -662,24 +670,24 @@ function R_DrawBEntitiesOnList(): void {
     const topnode = R_FindTopnode(minmaxs.subarray(0, 3), minmaxs.subarray(3, 6));
     if (!topnode) continue; // no part in a visible leaf
 
-    VectorCopy(currententity.origin, r_entorigin);
+    VectorCopy(ent.origin, r_entorigin);
     VectorSubtract(r_origin, r_entorigin, modelorg);
 
     // FIXME: stop transforming twice
     R_RotateBmodel();
 
     // calculate dynamic lighting for bmodel
-    R_PushDlights(currentmodel);
+    R_PushDlights(handle);
 
     if (!isMleaf(topnode)) {
       // not a leaf; has to be clipped to the world BSP
-      r_clipflags = clipflags;
-      R_DrawSolidClippedSubmodelPolygons(currentmodel, topnode);
+      SetClipflags(clipflags);
+      R_DrawSolidClippedSubmodelPolygons(handle, topnode);
     } else {
       // falls entirely in one leaf, so we just put all the
       // edges in the edge list and let 1/z sorting handle
       // drawing order
-      R_DrawSubmodelPolygons(currentmodel, clipflags, topnode);
+      R_DrawSubmodelPolygons(handle, clipflags, topnode);
     }
 
     // put back world rotation and frustum clipping
@@ -691,7 +699,7 @@ function R_DrawBEntitiesOnList(): void {
     R_TransformFrustum();
   }
 
-  insubmodel = false;
+  SetInsubmodel(false);
 }
 
 /*
@@ -702,22 +710,22 @@ R_EdgeDrawing
 function R_EdgeDrawing(): void {
   if (r_newrefdef.rdflags & RDF_NOWORLDMODEL) return;
 
-  // see this file's header comment: `auxedges`/`surfaces`/`r_edges` are
-  // module-local shadows that cannot reach r_edge.ts's own copies of the
-  // same r_local.h externs, so the stack-vs-heap surface/edge buffer swap
-  // this function performs in C has no observable effect here today.
+  if (auxedges !== null) {
+    SetEdges(auxedges);
+  } else {
+    if (stackEdges.length < r_numallocatededges) stackEdges = allocEdges(r_numallocatededges);
+    SetEdges(stackEdges);
+  }
+
   if (r_surfsonstack) {
-    surface_p = 0;
-    surf_max = r_cnumsurfs;
+    if (stackSurfaces.length < r_cnumsurfs + 1) stackSurfaces = allocSurfaces(r_cnumsurfs);
+    SetSurfaces(stackSurfaces);
+    SetSurfaceP(0);
+    SetSurfMax(r_cnumsurfs);
     R_SurfacePatch();
   }
 
   R_BeginEdgeFrame();
-
-  // r_dspeeds timing capture (rw_time1/rw_time2/db_time1/se_time1) dropped:
-  // those r_local.h externs are r_local.ts `let`s with no setter (same
-  // TS2632 wall as everything else in this file's header comment), so
-  // capturing Sys_Milliseconds() here would have nowhere faithful to go.
 
   R_RenderWorld();
 
@@ -858,8 +866,7 @@ function R_InitGraphics(width: number, height: number): void {
   vid.width = width;
   vid.height = height;
 
-  // free z buffer -- see file header comment; r_scan.ts's D_SetZBuffer
-  // replaces the malloc/free pair below
+  // free z buffer -- r_scan.ts's D_SetZBuffer replaces the malloc/free pair
 
   D_SetZBuffer(new Int16Array(width * height), width);
 
@@ -1034,12 +1041,7 @@ export function R_SetSky(name: string, rotate: number, axis: Vec3): void {
 
   for (let i = 0; i < 6; i++) {
     const pathname = Com_sprintf("env/%s%s.pcx", skyname, suf[r_skysideimage[i]]);
-    // see file header comment: this writes r_local.ts's `sky_texinfo`, not
-    // the real (r_rast.ts-private) `r_skytexinfo` array R_InitSkyBox/
-    // R_RenderFace actually draw with -- reported blocking integration gap.
-    if (!sky_texinfo[i]) sky_texinfo[i] = new MtexinfoT();
-    const texinfo = sky_texinfo[i];
-    if (texinfo) texinfo.image = R_FindImage(pathname, ImagetypeT.it_sky);
+    r_skytexinfo[i].image = R_FindImage(pathname, ImagetypeT.it_sky);
   }
 }
 

@@ -33,55 +33,26 @@ rather than a class -- it is pure position+texcoord data walked in tight
 clipping loops, and `.subarray(0, 3)` gives a zero-copy `Vec3` view for the
 vector-math helpers.
 
-Cross-module mutable state deviation (same wall, same shape as r_bsp.ts/
-r_rast.ts/r_scan.ts's own reported deviations -- see their header comments):
-r_local.h declares `cachewidth`/`cacheblock`/`currentmodel`/`r_alpha_surfaces`
-plus the ten `d_sdivz*`/`d_tdivz*`/`sadjust`/`tadjust`/`bbextent*` and three
-`d_zistep*`/`d_ziorigin` gradient globals as plain `extern`s that this file's
-own R_DrawPoly/R_PolygonCalculateGradients write and R_PolygonDrawSpans
-reads right back within the same C translation unit. r_local.ts mirrors
-these as bare `export let`s with no setters (an ES module cannot reassign
-another module's imported `let` binding -- tsc TS2632), so ownership of
-the perspective/z gradients is relocated here as module-private `let`s,
-matching r_scan.ts's identical relocation of the very same fields for its
-own (different) reader/writer pair -- r_local.ts's and r_scan.ts's exports
-of these names become additional inert duplicates for this unit; the
-coordinator should unify all three into one owner once every ref_soft
-consumer is landed. `cachewidth`/`cacheblock` get the same local treatment
-(r_poly.c is self-contained writer+reader of these for the polygon path,
-distinct from r_surf.c/r_scan.c's separate use of the identically-named
-BSP-surface-cache globals). `currentmodel` (R_DrawAlphaSurfaces writes it
-from `r_worldmodel`, R_BuildPolygonFromSurface reads it back) is likewise a
-local shadow here, independent of r_bsp.ts's own `currentmodel` shadow used
-for the main BSP walk -- r_sprite.ts reads r_bsp.ts's copy instead, since
-that is the one the (pending) per-entity draw loop in r_main.c would
-actually set for a sprite entity. `r_alpha_surfaces` (populated by
-r_bsp.ts/r_rast.ts's BSP walk in the real C control flow, consumed and
-NULLed out here) is shadowed locally the same way; nothing currently
-appends to this file's copy since the producer side lives in sibling files
-outside this brief's SCOPE, so R_DrawAlphaSurfaces is a correct but
-currently-unreachable consumer until the coordinator wires the producer
-and this shadow together (or gives every one of these fields a real setter
-in r_local.ts).
+Cross-module mutable state: `cachewidth`/`cacheblock`, the ten `d_sdivz*`/
+`d_tdivz*`/`sadjust`/`tadjust`/`bbextent*` and three `d_zistep*`/`d_ziorigin`
+gradients are r_local.h externs owned by r_scan.ts; R_DrawPoly/
+R_PolygonCalculateGradients write them through its `D_Set*` setters and
+R_PolygonDrawSpans reads the bindings back, which is the same single set of
+globals r_scan.c's own span drawers use. `currentmodel` and `r_alpha_surfaces`
+are owned by r_local.ts -- the latter matters: r_rast.ts's R_RenderFace is the
+producer that chains surfaces onto it and R_DrawAlphaSurfaces here is the
+consumer that walks and clears the list, so they must be the same list.
 
-`r_turb_turb` (`extern int *r_turb_turb;` in the C original, real storage
-in r_scan.c, reassigned by both r_scan.c and this file's own
-R_PolygonDrawSpans to point at `sintable + offset`) is ported as a private
-(table, offset) pair local to this file (same reshaping r_scan.ts already
-applied to its own copy), since r_scan.ts's copy is an unexported module
-local and the write/read pair for the turbulent-polygon path lives
-entirely inside this file.
-
-`TransformVector` (r_local.h extern, real home r_misc.c, already privately
-duplicated in r_rast.ts per that file's own comment) gets a third private
-copy here for the same reason: it is a pure function of `vright`/`vup`/`vpn`
-with no state to share, so duplicating it is cheaper than adding a
-cross-file dependency for a three-line function.
+`r_turb_turb` (`extern int *r_turb_turb;`, real storage in r_scan.c,
+reassigned by both r_scan.c and this file's R_PolygonDrawSpans to point at
+`sintable + offset`) is ported as a private (table, offset) pair here, the
+same reshaping r_scan.ts applied to its own copy: the pointer is rewritten
+before every use, so nothing crosses between the two files.
 */
 
 import { type Vec3, vec3, vec3_origin, DotProduct, VectorSubtract, VectorCopy, CrossProduct, VectorNormalize } from "../shared/math";
 import { ERR_DROP, SURF_TRANS66, SURF_WARP, SURF_FLOWING } from "../shared/q_shared";
-import type { MsurfaceT, ModelT } from "./r_model";
+import type { MsurfaceT } from "./r_model";
 import { SURF_PLANEBACK } from "./r_model";
 import { D_CacheSurface } from "./r_surf";
 import { r_worldmodel } from "./r_bsp";
@@ -114,17 +85,38 @@ import {
   sintable,
   vid,
   d_scantable,
+  currentmodel,
+  r_alpha_surfaces,
+  SetCurrentModel,
+  SetAlphaSurfaces,
 } from "./r_local";
-import { d_viewbuffer, d_pzbuffer, d_zwidth } from "./r_scan";
+import {
+  bbextentt,
+  bbextents,
+  cacheblock,
+  cachewidth,
+  d_pzbuffer,
+  d_sdivzorigin,
+  d_sdivzstepu,
+  d_sdivzstepv,
+  d_tdivzorigin,
+  d_tdivzstepu,
+  d_tdivzstepv,
+  d_viewbuffer,
+  d_ziorigin,
+  d_zistepu,
+  d_zistepv,
+  d_zwidth,
+  sadjust,
+  tadjust,
+  D_SetCacheSource,
+  D_SetStGradients,
+  D_SetZGradients,
+} from "./r_scan";
+import { TransformVector } from "./r_misc";
 
 const AFFINE_SPANLET_SIZE = 16;
 const AFFINE_SPANLET_SIZE_BITS = 4;
-
-function TransformVector(inV: Vec3, out: Vec3): void {
-  out[0] = DotProduct(inV, vright);
-  out[1] = DotProduct(inV, vup);
-  out[2] = DotProduct(inV, vpn);
-}
 
 export const r_polydesc: PolydescT = new PolydescT();
 
@@ -136,27 +128,6 @@ export const r_clip_verts: [Float32Array[], Float32Array[]] = [
 let clip_current = 0;
 
 let r_polyblendcolor = 0;
-
-// relocated shared rasterizer state -- see file header comment.
-let cachewidth = 0;
-let cacheblock: Uint8Array | null = null;
-
-let currentmodel: ModelT | null = null;
-let r_alpha_surfaces: MsurfaceT | null = null;
-
-let d_sdivzstepu = 0;
-let d_tdivzstepu = 0;
-let d_sdivzstepv = 0;
-let d_tdivzstepv = 0;
-let d_sdivzorigin = 0;
-let d_tdivzorigin = 0;
-let d_zistepu = 0;
-let d_zistepv = 0;
-let d_ziorigin = 0;
-let sadjust = 0;
-let tadjust = 0;
-let bbextents = 0;
-let bbextentt = 0;
 
 let r_turb_turbTable: number[] = sintable;
 let r_turb_turbOffset = 0;
@@ -1100,8 +1071,7 @@ function R_DrawPoly(iswater: boolean): void {
 
   if (ymin >= ymax) return; // doesn't cross any scans at all
 
-  cachewidth = r_polydesc.pixel_width;
-  cacheblock = r_polydesc.pixels;
+  D_SetCacheSource(r_polydesc.pixels, r_polydesc.pixel_width);
 
   // copy the first vertex to the last vertex, so we don't have to deal with
   // wrapping
@@ -1132,24 +1102,33 @@ function R_PolygonCalculateGradients(): void {
 
   const distinv = 1.0 / (-DotProduct(r_polydesc.viewer_position, r_polydesc.vpn) + r_polydesc.dist);
 
-  d_sdivzstepu = p_saxis[0] * xscaleinv;
-  d_sdivzstepv = -p_saxis[1] * yscaleinv;
-  d_sdivzorigin = p_saxis[2] - xcenter * d_sdivzstepu - ycenter * d_sdivzstepv;
+  const sdivzstepu = p_saxis[0] * xscaleinv;
+  const sdivzstepv = -p_saxis[1] * yscaleinv;
+  const sdivzorigin = p_saxis[2] - xcenter * sdivzstepu - ycenter * sdivzstepv;
 
-  d_tdivzstepu = p_taxis[0] * xscaleinv;
-  d_tdivzstepv = -p_taxis[1] * yscaleinv;
-  d_tdivzorigin = p_taxis[2] - xcenter * d_tdivzstepu - ycenter * d_tdivzstepv;
+  const tdivzstepu = p_taxis[0] * xscaleinv;
+  const tdivzstepv = -p_taxis[1] * yscaleinv;
+  const tdivzorigin = p_taxis[2] - xcenter * tdivzstepu - ycenter * tdivzstepv;
 
-  d_zistepu = p_normal[0] * xscaleinv * distinv;
-  d_zistepv = -p_normal[1] * yscaleinv * distinv;
-  d_ziorigin = p_normal[2] * distinv - xcenter * d_zistepu - ycenter * d_zistepv;
+  const zistepu = p_normal[0] * xscaleinv * distinv;
+  const zistepv = -p_normal[1] * yscaleinv * distinv;
+  const ziorigin = p_normal[2] * distinv - xcenter * zistepu - ycenter * zistepv;
 
-  sadjust = (Math.trunc((DotProduct(r_polydesc.viewer_position, r_polydesc.vright) + r_polydesc.s_offset) * 0x10000)) | 0;
-  tadjust = (Math.trunc((DotProduct(r_polydesc.viewer_position, r_polydesc.vup) + r_polydesc.t_offset) * 0x10000)) | 0;
+  D_SetZGradients(zistepu, zistepv, ziorigin);
 
-  // -1 (-epsilon) so we never wander off the edge of the texture
-  bbextents = ((r_polydesc.pixel_width << 16) - 1) | 0;
-  bbextentt = ((r_polydesc.pixel_height << 16) - 1) | 0;
+  D_SetStGradients({
+    sdivzstepu,
+    tdivzstepu,
+    sdivzstepv,
+    tdivzstepv,
+    sdivzorigin,
+    tdivzorigin,
+    sadjust: (Math.trunc((DotProduct(r_polydesc.viewer_position, r_polydesc.vright) + r_polydesc.s_offset) * 0x10000)) | 0,
+    tadjust: (Math.trunc((DotProduct(r_polydesc.viewer_position, r_polydesc.vup) + r_polydesc.t_offset) * 0x10000)) | 0,
+    // -1 (-epsilon) so we never wander off the edge of the texture
+    bbextents: ((r_polydesc.pixel_width << 16) - 1) | 0,
+    bbextentt: ((r_polydesc.pixel_height << 16) - 1) | 0,
+  });
 }
 
 /*
@@ -1158,7 +1137,7 @@ function R_PolygonCalculateGradients(): void {
 export function R_DrawAlphaSurfaces(): void {
   let s = r_alpha_surfaces;
 
-  currentmodel = r_worldmodel;
+  SetCurrentModel(r_worldmodel);
 
   modelorg[0] = -r_origin[0];
   modelorg[1] = -r_origin[1];
@@ -1178,7 +1157,7 @@ export function R_DrawAlphaSurfaces(): void {
     s = s.nextalphasurface;
   }
 
-  r_alpha_surfaces = null;
+  SetAlphaSurfaces(null);
 }
 
 /*

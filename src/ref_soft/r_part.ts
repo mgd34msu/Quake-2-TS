@@ -36,29 +36,37 @@ body never actually calls (dead code left over from mirroring the asm
 version's calling convention); that dead assignment is dropped rather than
 ported verbatim, since it has no observable effect either in C or here.
 
-Cross-module mutable state deviation (same wall, same shape as r_bsp.ts/
-r_rast.ts/r_scan.ts/r_poly.ts's own reported deviations -- see their header
-comments): r_local.h declares `xcenter`/`ycenter`/`xscaleshrink`/
-`yscaleshrink`/`d_vrectx`/`d_vrecty`/`d_vrectright_particle`/
-`d_vrectbottom_particle`/`d_pix_min`/`d_pix_max`/`d_pix_shift` as plain
-`extern`s really written by r_main.c's R_SetupFrame (out of this brief's
-SCOPE, still a PendingPort stub) and read here. r_local.ts mirrors them as
-bare `export let`s with no setters, so an ES module here cannot reassign
-them (tsc TS2632); ported as module-private `let`s with exported `D_Set*`
-setters instead, matching r_scan.ts's identical relocation of a different
-field set. r_local.ts's identically-named exports become additional inert
-duplicates for this unit until the coordinator gives R_SetupFrame's real
-home (r_main.ts) a way to drive every ref_soft consumer's copy.
-
-`r_pright`/`r_pup`/`r_ppn`/`r_origin`/`vup`/`vright`/`vpn`/`d_scantable`/
-`vid` are all `export const` object/array bindings in r_local.ts, so their
-elements and properties are freely mutable from here without hitting
-TS2632 -- no shadow needed for those.
+Cross-module mutable state: `d_vrectx`/`d_vrecty`/`d_vrectright_particle`/
+`d_vrectbottom_particle`/`d_pix_min`/`d_pix_max`/`d_pix_shift` are r_local.h
+externs owned here -- D_ViewChanged (r_misc.ts) is their only writer and
+R_DrawParticle their only reader -- and are set through the exported
+`D_Set*` functions, since an imported `let` binding is read-only to the
+importer. `xcenter`/`ycenter`/`xscaleshrink`/`yscaleshrink` are shared with
+r_rast.ts/r_edge.ts, so they stay owned by r_local.ts and
+D_SetParticleCenter/D_SetParticleShrink forward to its setters.
 */
 
 import { vec3, DotProduct, VectorSubtract, VectorScale, VectorCopy } from "../shared/math";
 import type { ParticleT } from "../client/ref";
-import { PARTICLE_Z_CLIP, r_pright, r_pup, r_ppn, r_origin, vright, vup, vpn, vid, r_newrefdef, d_scantable } from "./r_local";
+import {
+  PARTICLE_Z_CLIP,
+  r_pright,
+  r_pup,
+  r_ppn,
+  r_origin,
+  vright,
+  vup,
+  vpn,
+  vid,
+  r_newrefdef,
+  d_scantable,
+  xcenter,
+  ycenter,
+  xscaleshrink,
+  yscaleshrink,
+  SetViewCenter,
+  SetViewShrink,
+} from "./r_local";
 import { d_viewbuffer, r_screenwidth, d_pzbuffer, d_zwidth } from "./r_scan";
 
 const PARTICLE_33 = 0;
@@ -73,11 +81,8 @@ interface PartparmsT {
 
 const partparms: PartparmsT = { particle: null, level: 0, color: 0 };
 
-// relocated shared rasterizer state -- see file header comment.
-let xcenter = 0;
-let ycenter = 0;
-let xscaleshrink = 0;
-let yscaleshrink = 0;
+// `d_vrect*`/`d_pix_*` (r_local.h externs) are owned here: D_ViewChanged
+// (r_misc.ts) is their only writer and R_DrawParticle their only reader.
 let d_vrectx = 0;
 let d_vrecty = 0;
 let d_vrectright_particle = 0;
@@ -87,13 +92,11 @@ let d_pix_max = 0;
 let d_pix_shift = 0;
 
 export function D_SetParticleCenter(xc: number, yc: number): void {
-  xcenter = xc;
-  ycenter = yc;
+  SetViewCenter(xc, yc);
 }
 
 export function D_SetParticleShrink(xs: number, ys: number): void {
-  xscaleshrink = xs;
-  yscaleshrink = ys;
+  SetViewShrink(xs, ys);
 }
 
 export function D_SetParticleClipRect(vrectx: number, vrecty: number, vrectRightParticle: number, vrectBottomParticle: number): void {

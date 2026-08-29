@@ -43,31 +43,21 @@ allocator ever compares that number to a real C `sizeof`, only internal
 consistency (same constant used every time this file adds header overhead)
 matters for the port's own correctness.
 
-Cross-module mutable state (see r_edge.ts's header comment for the same
-issue elsewhere in this unit): r_local.h's `sc_base`/`sc_rover`/
-`d_roverwrapped`/`d_initial_rover`/`c_surf` are declared as shared `export
-let`s in r_local.ts, but every reader and writer of them in the current
-(partially-pending) renderer is this file alone -- r_main.c's per-frame
-`d_initial_rover = sc_rover` reset lives in the still-pending r_main.ts.
-They are re-declared here as module-local `let`s (shadowing r_local.ts's
-now-inert copies) for the same ES-module-binding reason r_edge.ts gives;
-`D_SetInitialRover` is exported so the future r_main.ts unit has a setter
-to call instead of assigning a bare global once it exists.
+Cross-module mutable state: r_local.h's `sc_base`/`sc_rover`/
+`d_roverwrapped`/`d_initial_rover`/`c_surf` are owned here, since the surface
+cache allocator in this file is their only reader and writer. `D_SetInitialRover`
+is the setter r_misc.ts's R_SetupFrame calls for the C original's per-frame
+`d_roverwrapped = false; d_initial_rover = sc_rover;` reset.
 
-`R_BuildLightMap` (r_light.c, declared via a local `extern` forward
-declaration inside r_surf.c itself rather than r_local.h) and its
-`blocklights` backing array are a genuine cross-file dependency on a
-pending sibling (r_light.ts) that does not export them (out of this unit's
-scope to add). Ported as a private placeholder that throws PendingPort,
-exactly like this unit's calls into r_bsp.ts's R_RotateBmodel and
-r_misc.ts's R_TransformFrustum -- D_CacheSurface's own control flow is
-fully and faithfully ported up to that call.
+`R_BuildLightMap` and its `blocklights` backing array are declared via a local
+`extern` forward declaration inside r_surf.c rather than in r_local.h;
+r_light.ts (r_light.c, their true C home) exports both and this file imports
+them.
 */
 
-import { PendingPort } from "../qcommon/pending";
 import { ERR_FATAL, PRINT_ALL } from "../shared/q_shared";
-import { currententity } from "./r_edge";
-import { SURFCACHE_SIZE_AT_320X240, SurfcacheT, r_drawsurf, r_framecount, r_newrefdef, rCvars, ri, vid } from "./r_local";
+import { SURFCACHE_SIZE_AT_320X240, SurfcacheT, currententity, r_drawsurf, r_framecount, r_newrefdef, rCvars, ri, vid } from "./r_local";
+import { R_BuildLightMap, blocklights } from "./r_light";
 import type { ImageT, MsurfaceT, MtexinfoT } from "./r_model";
 
 //===========================================================================
@@ -93,7 +83,9 @@ let d_initial_rover: SurfcacheT | null = null;
 let r_cache_thrash = false; // set if surface cache is thrashing
 let c_surf = 0;
 
+// r_main.c's D_SetupFrame does both halves of this reset together.
 export function D_SetInitialRover(): void {
+  d_roverwrapped = false;
   d_initial_rover = sc_rover;
 }
 
@@ -106,15 +98,6 @@ function positionOf(c: SurfcacheT): number {
 // approximates `sizeof(surfcache_t)` minus the flexible `data[]` member --
 // see file header comment.
 const SURFCACHE_HEADER_SIZE = 32;
-
-//===========================================================================
-// R_BuildLightMap placeholder -- see file header comment.
-
-const blocklights = new Uint32Array(1024); // allow some very large lightmaps
-
-function R_BuildLightMap(): void {
-  throw new PendingPort("R_BuildLightMap");
-}
 
 //===========================================================================
 

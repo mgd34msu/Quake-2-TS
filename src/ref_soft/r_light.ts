@@ -25,21 +25,18 @@ purely so this unit's tests can drive them directly, per this unit's brief.
 ref_soft's .c or .asm sources (dead/stale declaration, like r_surf.c's
 R_DrawSurfaceBlock8/16) -- reported omission, no stub exists for it.
 
-Cross-module mutable state: `r_dlightframecount` (r_local.h extern) is
-written by R_PushDlights and read by R_MarkLights, both in this file, so it
-stays a plain local `let` -- no other ref_soft unit touches it in this
-brief's scope, unlike the fields r_bsp.ts/r_rast.ts had to shadow for
-cross-file write access (see those files' header comments for the general
-shape of that problem). `currententity` is read (never written) here, so it
-is imported directly from r_bsp.ts's shadow copy of that r_local.h extern
-(see r_bsp.ts's header comment) rather than r_local.ts's stale original.
+Cross-module mutable state: `r_dlightframecount` is an r_local.h extern owned
+by r_local.ts, written here by R_PushDlights and also by R_DrawBEntitiesOnList
+(r_main.ts), so both go through its setter. `currententity`/`r_worldmodel` are
+read (never written) here and imported through r_bsp.ts, which re-exports
+r_local.ts's bindings.
 */
 
 import { type Vec3, vec3, vec3_origin, DotProduct, VectorCopy, VectorMA, VectorSubtract, VectorLength } from "../shared/math";
 import { MAXLIGHTMAPS } from "../qcommon/qfiles";
 import type { DlightT } from "../client/ref";
 import { type MnodeOrLeaf, type MplaneT, type ModelT, isMleaf, SURF_DRAWSKY, SURF_DRAWTURB } from "./r_model";
-import { r_newrefdef, r_drawsurf, rCvars, r_framecount, VID_CBITS } from "./r_local";
+import { r_newrefdef, r_drawsurf, rCvars, r_dlightframecount, r_framecount, SetDlightFrameCount, VID_CBITS } from "./r_local";
 import { currententity, r_worldmodel } from "./r_bsp";
 
 /*
@@ -50,7 +47,7 @@ DYNAMIC LIGHTS
 =============================================================================
 */
 
-let r_dlightframecount = 0;
+
 
 /*
 =============
@@ -102,7 +99,7 @@ R_PushDlights
 =============
 */
 export function R_PushDlights(model: ModelT): void {
-  r_dlightframecount = r_framecount;
+  SetDlightFrameCount(r_framecount);
 
   for (let i = 0; i < r_newrefdef.num_dlights; i++) {
     const l = r_newrefdef.dlights[i];

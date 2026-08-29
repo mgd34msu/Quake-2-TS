@@ -41,27 +41,18 @@ Pointer-arithmetic reshapings (reported in the unit report):
   "a stable arbitrary color derived from surface identity" -- reported
   deviation, not a pointer-bit-pattern match.
 
-Cross-module mutable state (also reported in the unit report, alongside
-r_scan.ts's copy of the same note): r_local.h's shared globals for the
-per-surface rasterizer gradients (`d_sdivz*`/`d_tdivz*`/`sadjust`/`tadjust`/
-`bbextent*`/`d_zistep*`/`d_ziorigin`) and the texture source
-(`cacheblock`/`cachewidth`) are written here (by D_CalcGradients/
-D_BackgroundSurf/D_TurbulentSurf/D_SkySurf/D_SolidSurf) and read by
-r_scan.ts's span drawers. Since ES module bindings can't be written from
-outside their declaring module (verified directly against bun; see
-r_scan.ts's header comment) and r_local.ts (out of this unit's scope) has
-no setters for them, this file calls r_scan.ts's exported `D_Set*` setters
-instead of assigning bare globals. `edge_p`/`edge_max`/`surface_p`/
-`r_drawnpolycount`/`currententity` are similarly re-declared here as local
-`let`s (shadowing r_local.ts's same-named, now-inert exports) because this
-file is their sole writer; r_surf.ts imports `currententity` directly from
-here (read-only) since it needs it for R_TextureAnimation.
-
-`TransformVector` is declared in r_local.h and its true home is r_misc.c
-(-> the pending r_misc.ts), which does not export it (out of this unit's
-scope to add). Since every call site needed here is inside r_edge.c itself,
-it is ported as a private local helper (`transformVector`); delete it and
-import from r_misc.ts once that unit lands and exports the real one.
+Cross-module mutable state: the per-surface rasterizer gradients
+(`d_sdivz*`/`d_tdivz*`/`sadjust`/`tadjust`/`bbextent*`/`d_zistep*`/
+`d_ziorigin`) and the texture source (`cacheblock`/`cachewidth`) are written
+here (D_CalcGradients/D_BackgroundSurf/D_TurbulentSurf/D_SkySurf/D_SolidSurf)
+and read by r_scan.ts's span drawers, which owns them; this file calls its
+`D_Set*` setters, since an imported `let` binding is read-only to the
+importer. `currententity`/`r_drawnpolycount`/`surface_p`/`edge_p`/`edge_max`
+are r_local.h externs owned by r_local.ts and written through its setters --
+`surface_p`/`edge_p` in particular are the same counters r_rast.ts advances
+while filling `surfaces[]`/`r_edges[]`, which this file then consumes.
+`currententity` is re-exported here because r_surf.ts reaches it through this
+module for R_TextureAnimation.
 */
 
 import {
@@ -92,6 +83,16 @@ import {
   xscaleinv,
   ycenter,
   yscaleinv,
+  currententity,
+  edge_max,
+  edge_p,
+  r_drawnpolycount,
+  surface_p,
+  SetCurrentEntity,
+  SetDrawnPolyCount,
+  SetEdgeMax,
+  SetEdgeP,
+  SetSurfaceP,
   EdgeT,
   EspanT,
   type SurfcacheT,
@@ -100,9 +101,8 @@ import {
 import { SURF_DRAWBACKGROUND, SURF_DRAWSKYBOX, SURF_DRAWTURB, type MsurfaceT } from "./r_model";
 import { SURF_FLOWING, SURF_WARP } from "../shared/q_shared";
 import { DotProduct, VectorCopy, VectorScale, VectorSubtract, type Vec3, vec3, vec3_origin } from "../shared/math";
-import type { EntityT } from "../client/ref";
 import { R_RotateBmodel } from "./r_bsp";
-import { R_TransformFrustum } from "./r_misc";
+import { R_TransformFrustum, TransformVector } from "./r_misc";
 import { D_CacheSurface } from "./r_surf";
 import { D_DrawSpans16, D_DrawZSpans, D_SetCacheSource, D_SetStGradients, D_SetZGradients, NonTurbulent8, Turbulent8, d_viewbuffer, r_screenwidth } from "./r_scan";
 
@@ -121,10 +121,6 @@ export function R_EdgeCodeEnd(): void {
 
 //===========================================================================
 // file statics (r_edge.c)
-
-let surface_p = 0;
-let edge_p = 0;
-let edge_max = 0;
 
 let r_currentkey = 0;
 let current_iv = 0;
@@ -148,10 +144,10 @@ const transformed_modelorg: Vec3 = vec3();
 const world_transformed_modelorg: Vec3 = vec3();
 const local_modelorg: Vec3 = vec3();
 
-export let r_drawnpolycount = 0;
-
-// see file header comment: sole writer of `currententity` in this unit.
-export let currententity: EntityT | null = null;
+// `currententity`/`r_drawnpolycount`/`surface_p`/`edge_p`/`edge_max` are
+// r_local.h externs owned by r_local.ts; re-exported because r_surf.ts reads
+// `currententity` through this module.
+export { currententity } from "./r_local";
 
 // `espan_t *span_p, *max_span_p` plus R_ScanEdges's stack-local `basespans`
 // byte array, reshaped into an index-addressed pool -- see file header.
@@ -170,13 +166,6 @@ function activeSurfaces(): SurfT[] {
   return surfaces;
 }
 
-// TransformVector -- see file header comment on why this lives here.
-function transformVector(vin: Vec3, vout: Vec3): void {
-  vout[0] = DotProduct(vin, vright);
-  vout[1] = DotProduct(vin, vup);
-  vout[2] = DotProduct(vin, vpn);
-}
-
 /*
 ===============================================================================
 
@@ -191,10 +180,10 @@ R_BeginEdgeFrame
 ==============
 */
 export function R_BeginEdgeFrame(): void {
-  edge_p = 0;
-  edge_max = r_numallocatededges;
+  SetEdgeP(0);
+  SetEdgeMax(r_numallocatededges);
 
-  surface_p = 2; // background is surface 1, surface 0 is a dummy
+  SetSurfaceP(2); // background is surface 1, surface 0 is a dummy
   const surfacesArr = activeSurfaces();
   surfacesArr[1].spans = null; // no background spans yet
   surfacesArr[1].flags = SURF_DRAWBACKGROUND;
@@ -770,8 +759,8 @@ function D_CalcGradients(pface: MsurfaceT): void {
 
   const p_saxis = vec3();
   const p_taxis = vec3();
-  transformVector(texinfo.vecs[0], p_saxis);
-  transformVector(texinfo.vecs[1], p_taxis);
+  TransformVector(texinfo.vecs[0], p_saxis);
+  TransformVector(texinfo.vecs[1], p_taxis);
 
   let t = xscaleinv * mipscale;
   const sdivzstepu = p_saxis[0] * t;
@@ -853,9 +842,9 @@ function D_TurbulentSurf(s: SurfT): void {
     // TODO: store once at start of frame
     const entity = s.entity;
     if (entity === null) throw new Error("r_edge: insubmodel surf has no entity");
-    currententity = entity; // FIXME: make this passed in to R_RotateBmodel ()
+    SetCurrentEntity(entity); // FIXME: make this passed in to R_RotateBmodel ()
     VectorSubtract(r_origin, entity.origin, local_modelorg);
-    transformVector(local_modelorg, transformed_modelorg);
+    TransformVector(local_modelorg, transformed_modelorg);
 
     R_RotateBmodel(); // FIXME: don't mess with the frustum, make entity passed in
   }
@@ -878,7 +867,7 @@ function D_TurbulentSurf(s: SurfT): void {
     // FIXME: we don't want to do this every time!
     // TODO: speed up
     //
-    currententity = null; // &r_worldentity;
+    SetCurrentEntity(null); // &r_worldentity;
     VectorCopy(world_transformed_modelorg, transformed_modelorg);
     VectorCopy(base_vpn, vpn);
     VectorCopy(base_vup, vup);
@@ -928,13 +917,13 @@ function D_SolidSurf(s: SurfT): void {
     // TODO: store once at start of frame
     const entity = s.entity;
     if (entity === null) throw new Error("r_edge: insubmodel surf has no entity");
-    currententity = entity; // FIXME: make this passed in to R_RotateBmodel ()
+    SetCurrentEntity(entity); // FIXME: make this passed in to R_RotateBmodel ()
     VectorSubtract(r_origin, entity.origin, local_modelorg);
-    transformVector(local_modelorg, transformed_modelorg);
+    TransformVector(local_modelorg, transformed_modelorg);
 
     R_RotateBmodel(); // FIXME: don't mess with the frustum, make entity passed in
   } else {
-    currententity = r_worldentity;
+    SetCurrentEntity(r_worldentity);
   }
 
   const msurf = s.msurf;
@@ -966,7 +955,7 @@ function D_SolidSurf(s: SurfT): void {
     VectorCopy(base_vup, vup);
     VectorCopy(base_vright, vright);
     R_TransformFrustum();
-    currententity = null; // &r_worldentity;
+    SetCurrentEntity(null); // &r_worldentity;
   }
 }
 
@@ -1018,7 +1007,7 @@ May be called more than once a frame if the surf list overflows (higher res)
 export function D_DrawSurfaces(): void {
   // currententity = null; //&r_worldentity;
   VectorSubtract(r_origin, vec3_origin, modelorg);
-  transformVector(modelorg, transformed_modelorg);
+  TransformVector(modelorg, transformed_modelorg);
   VectorCopy(transformed_modelorg, world_transformed_modelorg);
 
   const drawflat = rCvars.sw_drawflat !== null && rCvars.sw_drawflat.value !== 0;
@@ -1029,7 +1018,7 @@ export function D_DrawSurfaces(): void {
       const s = surfacesArr[i];
       if (s.spans === null) continue;
 
-      r_drawnpolycount++;
+      SetDrawnPolyCount(r_drawnpolycount + 1);
 
       if (!(s.flags & (SURF_DRAWSKYBOX | SURF_DRAWBACKGROUND | SURF_DRAWTURB))) D_SolidSurf(s);
       else if (s.flags & SURF_DRAWSKYBOX) D_SkySurf(s);
@@ -1040,7 +1029,7 @@ export function D_DrawSurfaces(): void {
     D_DrawflatSurfaces();
   }
 
-  currententity = null; // &r_worldentity;
+  SetCurrentEntity(null); // &r_worldentity;
   VectorSubtract(r_origin, vec3_origin, modelorg);
   R_TransformFrustum();
 }

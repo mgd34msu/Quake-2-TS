@@ -49,7 +49,10 @@ import {
   DBRUSHSIDE_T_SIZE,
   DBRUSH_T_SIZE,
   DAREA_T_SIZE,
-  DAREAPORTAL_T_SIZE,
+  DVERTEX_T_SIZE,
+  DEDGE_T_SIZE,
+  DFACE_T_SIZE,
+  MAXLIGHTMAPS,
 } from "../../src/qcommon/qfiles";
 import { CONTENTS_SOLID } from "../../src/shared/q_shared";
 
@@ -110,7 +113,55 @@ FACES, LIGHTING, LEAFFACES, EDGES, SURFEDGES, POP) are emitted empty.
 */
 export const WORLDSPAWN_ONLY_ENTITIES = '{\n"classname" "worldspawn"\n}\n';
 
-export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES): Uint8Array {
+/*
+`renderable` adds the lumps cmodel.ts never reads but the software renderer
+needs: 24 vertexes / 25 edges / 24 surfedges forming one inward-facing quad
+per wall, a face per wall hung off that wall's BSP node, a per-wall texinfo,
+and leaffaces marking all six from the empty leaf. Off by default so the
+collision-only tests that already use this builder keep their exact lumps.
+Node/leaf bounds are also filled in, because R_RecursiveWorldNode frustum-culls
+on them and an all-zero box rejects everything.
+*/
+export interface BoxRoomOptions {
+  renderable?: boolean;
+}
+
+// in-plane (s, t) axes per wall, chosen so that s x t == the wall's inward
+// normal.
+function wallAxes(): Array<{ s: [number, number, number]; t: [number, number, number] }> {
+  return [
+    { s: [0, 0, 1], t: [0, 1, 0] }, // +X wall
+    { s: [0, 1, 0], t: [0, 0, 1] }, // -X wall
+    { s: [1, 0, 0], t: [0, 0, 1] }, // +Y wall
+    { s: [0, 0, 1], t: [1, 0, 0] }, // -Y wall
+    { s: [0, 1, 0], t: [1, 0, 0] }, // +Z wall
+    { s: [1, 0, 0], t: [0, 1, 0] }, // -Z wall
+  ];
+}
+
+/*
+The four corners of wall i, wound clockwise about its inward normal -- i.e.
+counter-clockwise seen from the solid side. That is the direction r_rast.c's
+R_RenderFace needs: it decides leading vs trailing edge from `ceilv0 >
+r_ceilv1`, so the opposite winding emits every surface's entering edge on the
+right and its leaving edge on the left, R_GenerateSpans reads that as an
+inverted span, and the surface produces no spans at all.
+*/
+function wallCorners(i: number): Array<[number, number, number]> {
+  const plane = wallPlanes()[i];
+  const axes = wallAxes()[i];
+  const h = ROOM_HALF;
+  const center: [number, number, number] = [plane.normal[0] * plane.dist, plane.normal[1] * plane.dist, plane.normal[2] * plane.dist];
+  const corner = (su: number, tv: number): [number, number, number] => [
+    center[0] + axes.s[0] * su * h + axes.t[0] * tv * h,
+    center[1] + axes.s[1] * su * h + axes.t[1] * tv * h,
+    center[2] + axes.s[2] * su * h + axes.t[2] * tv * h,
+  ];
+  return [corner(-1, -1), corner(-1, 1), corner(1, 1), corner(1, -1)];
+}
+
+export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES, options: BoxRoomOptions = {}): Uint8Array {
+  const renderable = options.renderable === true;
   const planes = wallPlanes();
 
   // ---- PLANES (6) ----
@@ -133,31 +184,87 @@ export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES)
     view.setInt32(base, i, true); // planenum
     view.setInt32(base + 4, insideChild, true); // children[0]
     view.setInt32(base + 8, outsideChild, true); // children[1]
-    view.setInt16(base + 12, 0, true); // mins (unused by cmodel.ts)
-    view.setInt16(base + 14, 0, true);
-    view.setInt16(base + 16, 0, true);
-    view.setInt16(base + 18, 0, true); // maxs
-    view.setInt16(base + 20, 0, true);
-    view.setInt16(base + 22, 0, true);
-    view.setUint16(base + 24, 0, true); // firstface (unused)
-    view.setUint16(base + 26, 0, true); // numfaces (unused)
+    const b = renderable ? ROOM_HALF : 0;
+    view.setInt16(base + 12, -b, true); // mins
+    view.setInt16(base + 14, -b, true);
+    view.setInt16(base + 16, -b, true);
+    view.setInt16(base + 18, b, true); // maxs
+    view.setInt16(base + 20, b, true);
+    view.setInt16(base + 22, b, true);
+    view.setUint16(base + 24, renderable ? i : 0, true); // firstface
+    view.setUint16(base + 26, renderable ? 1 : 0, true); // numfaces
   });
 
-  // ---- TEXINFO (1 dummy entry; brushsides need a valid texinfo index) ----
-  const texinfoLump = buildLump(1, TEXINFO_T_SIZE, (view, base) => {
-    view.setFloat32(base, 1, true);
-    view.setFloat32(base + 4, 0, true);
-    view.setFloat32(base + 8, 0, true);
+  // ---- TEXINFO: entry 0 is the dummy brushsides reference; when renderable,
+  // entries 1..6 carry each wall's own (s, t) axes. ----
+  const axes = wallAxes();
+  const texinfoLump = buildLump(renderable ? 7 : 1, TEXINFO_T_SIZE, (view, base, i) => {
+    const sAxis = i === 0 ? [1, 0, 0] : axes[i - 1].s;
+    const tAxis = i === 0 ? [0, 1, 0] : axes[i - 1].t;
+    view.setFloat32(base, sAxis[0], true);
+    view.setFloat32(base + 4, sAxis[1], true);
+    view.setFloat32(base + 8, sAxis[2], true);
     view.setFloat32(base + 12, 0, true);
-    view.setFloat32(base + 16, 0, true);
-    view.setFloat32(base + 20, 1, true);
-    view.setFloat32(base + 24, 0, true);
+    view.setFloat32(base + 16, tAxis[0], true);
+    view.setFloat32(base + 20, tAxis[1], true);
+    view.setFloat32(base + 24, tAxis[2], true);
     view.setFloat32(base + 28, 0, true);
     view.setInt32(base + 32, 0, true); // flags
     view.setInt32(base + 36, 0, true); // value
     writeFixedString(view, base + 40, "wall", 32); // texture
     view.setInt32(base + 72, -1, true); // nexttexinfo
   });
+
+  // ---- VERTEXES / EDGES / SURFEDGES / FACES / LEAFFACES (renderable only).
+  // Edge 0 is a reserved dummy: a surfedge of 0 has no sign and so cannot
+  // name a real edge. ----
+  const vertexesLump = !renderable
+    ? new Uint8Array(0)
+    : buildLump(24, DVERTEX_T_SIZE, (view, base, i) => {
+        const p = wallCorners((i / 4) | 0)[i % 4];
+        view.setFloat32(base, p[0], true);
+        view.setFloat32(base + 4, p[1], true);
+        view.setFloat32(base + 8, p[2], true);
+      });
+
+  const edgesLump = !renderable
+    ? new Uint8Array(0)
+    : buildLump(25, DEDGE_T_SIZE, (view, base, i) => {
+        if (i === 0) {
+          view.setUint16(base, 0, true);
+          view.setUint16(base + 2, 0, true);
+          return;
+        }
+        const e = i - 1;
+        const face = (e / 4) | 0;
+        const corner = e % 4;
+        view.setUint16(base, face * 4 + corner, true);
+        view.setUint16(base + 2, face * 4 + ((corner + 1) % 4), true);
+      });
+
+  const surfedgesLump = !renderable
+    ? new Uint8Array(0)
+    : buildLump(24, 4, (view, base, i) => {
+        view.setInt32(base, i + 1, true); // edge i+1, forward
+      });
+
+  const facesLump = !renderable
+    ? new Uint8Array(0)
+    : buildLump(6, DFACE_T_SIZE, (view, base, i) => {
+        view.setUint16(base, i, true); // planenum
+        view.setInt16(base + 2, 0, true); // side (0: front, normal points into the room)
+        view.setInt32(base + 4, i * 4, true); // firstedge (into SURFEDGES)
+        view.setInt16(base + 8, 4, true); // numedges
+        view.setInt16(base + 10, i + 1, true); // texinfo
+        for (let j = 0; j < MAXLIGHTMAPS; j++) view.setUint8(base + 12 + j, j === 0 ? 0 : 255); // styles
+        view.setInt32(base + 16, -1, true); // lightofs: no lightmap data
+      });
+
+  const leaffacesLump = !renderable
+    ? new Uint8Array(0)
+    : buildLump(6, 2, (view, base, i) => {
+        view.setUint16(base, i, true);
+      });
 
   // ---- LEAFS (2): leaf 0 solid (owns leafbrushes [0..5]), leaf 1 empty
   // (owns none -- its firstleafbrush is never indexed since numleafbrushes
@@ -167,14 +274,15 @@ export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES)
     view.setInt32(base, solid ? CONTENTS_SOLID : 0, true); // contents
     view.setInt16(base + 4, solid ? -1 : 0, true); // cluster
     view.setInt16(base + 6, solid ? 0 : 1, true); // area
-    view.setInt16(base + 8, 0, true); // mins (unused)
-    view.setInt16(base + 10, 0, true);
-    view.setInt16(base + 12, 0, true);
-    view.setInt16(base + 14, 0, true); // maxs
-    view.setInt16(base + 16, 0, true);
-    view.setInt16(base + 18, 0, true);
-    view.setUint16(base + 20, 0, true); // firstleafface (unused)
-    view.setUint16(base + 22, 0, true); // numleaffaces (unused)
+    const b = renderable ? ROOM_HALF : 0;
+    view.setInt16(base + 8, -b, true); // mins
+    view.setInt16(base + 10, -b, true);
+    view.setInt16(base + 12, -b, true);
+    view.setInt16(base + 14, b, true); // maxs
+    view.setInt16(base + 16, b, true);
+    view.setInt16(base + 18, b, true);
+    view.setUint16(base + 20, 0, true); // firstleafface
+    view.setUint16(base + 22, renderable && !solid ? 6 : 0, true); // numleaffaces
     view.setUint16(base + 24, 0, true); // firstleafbrush
     view.setUint16(base + 26, solid ? 6 : 0, true); // numleafbrushes
   });
@@ -230,17 +338,17 @@ export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES)
   const lumpOrder: Array<{ index: number; data: Uint8Array }> = [
     { index: LUMP_ENTITIES, data: entitiesLump },
     { index: LUMP_PLANES, data: planesLump },
-    { index: LUMP_VERTEXES, data: empty },
+    { index: LUMP_VERTEXES, data: vertexesLump },
     { index: LUMP_VISIBILITY, data: empty },
     { index: LUMP_NODES, data: nodesLump },
     { index: LUMP_TEXINFO, data: texinfoLump },
-    { index: LUMP_FACES, data: empty },
+    { index: LUMP_FACES, data: facesLump },
     { index: LUMP_LIGHTING, data: empty },
     { index: LUMP_LEAFS, data: leafsLump },
-    { index: LUMP_LEAFFACES, data: empty },
+    { index: LUMP_LEAFFACES, data: leaffacesLump },
     { index: LUMP_LEAFBRUSHES, data: leafbrushesLump },
-    { index: LUMP_EDGES, data: empty },
-    { index: LUMP_SURFEDGES, data: empty },
+    { index: LUMP_EDGES, data: edgesLump },
+    { index: LUMP_SURFEDGES, data: surfedgesLump },
     { index: LUMP_MODELS, data: modelsLump },
     { index: LUMP_BRUSHES, data: brushesLump },
     { index: LUMP_BRUSHSIDES, data: brushsidesLump },

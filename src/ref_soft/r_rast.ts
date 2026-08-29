@@ -23,45 +23,22 @@ PORTING.md's "#ifdef id386 ... take the portable path"). `R_EmitSkyBox`/
 `R_EmitCachedEdge` are static internal helpers (not declared in r_local.h)
 and stay unexported, matching this file's own former header comment.
 
-Cross-module mutable state deviation (reported for the coordinator, same
-shape as r_model.ts's own reported deviation for `r_worldmodel`): r_local.h
-declares `surface_p`/`edge_p`/`r_outofsurfaces`/`r_outofedges`/
-`r_alpha_surfaces`/`c_faceclip` as globals shared by every r_*.c translation
-unit, and r_local.ts already carries most of them as bare `export let`s.
-An ES module cannot reassign another module's imported `let` binding
-(tsc TS2632: "Cannot assign to 'x' because it is an import"), and this file's
-R_RenderFace/R_RenderBmodelFace/R_EmitEdge/R_EmitCachedEdge need to
-increment/reassign several of these every call. r_local.ts exports no
-setters for them (the one precedent, `SetRefImports`, only covers `ri`), and
-adding setters there is out of this brief's SCOPE. Ported as local module
-state here instead (including `c_faceclip`, which r_local.ts never declared
-at all). Nothing outside this file currently reads r_local.ts's copies of
-these fields, so nothing observes the staleness yet; flagged as a follow-up
-for the coordinator to add real setters to r_local.ts (or move the
-declarations here) once other ref_soft units need to observe them too.
+`c_faceclip`/`r_polycount` are r_rast.c file-scope counters that r_local.ts
+never declared; they stay module state here. The r_local.h externs this file
+writes -- `surface_p`/`edge_p`/`r_outofsurfaces`/`r_outofedges`/
+`r_alpha_surfaces` -- are owned by r_local.ts and reassigned through its
+setters, since an imported `let` binding is read-only to the importer.
 
-`r_currentkey`/`r_currentbkey` (r_local.h externs, real homes r_edge.c and
-r_bsp.c respectively) have the same problem but are also read/written from
-r_bsp.ts, so a bare local `let` here would hit the identical TS2632 wall the
-other direction. Ported as the `rKey` holder object below instead --
-property mutation on a shared object reference crosses ES module boundaries
-fine even though rebinding a `let` does not.
+`r_currentkey` (real home r_edge.c) and `r_currentbkey` (real home r_bsp.c)
+are read and written from both this file and r_bsp.ts, so they are ported as
+the `rKey` holder object below: property mutation on a shared object crosses
+module boundaries where rebinding a `let` does not.
 
-`currentmodel`/`currententity`/`r_pcurrentvertbase` (also r_local.h externs)
-are written by R_RenderWorld in r_bsp.ts and read here; r_bsp.ts carries the
-same kind of local shadow for the same reason (see that file's header
-comment) and this file reads them lazily via Bun's synchronous `require()`
-per PORTING.md's import-cycle rule, since r_bsp.ts already statically
-imports R_RenderFace/R_RenderBmodelFace/rKey from this file and a static
-import the other way back would close a cycle.
-
-`loadmodel` (r_model.c's own global, read by R_InitSkyBox) is not exported
-by r_model.ts (that module shadows it as an unexported local for the same
-TS2632 reason -- see its own header comment), so R_InitSkyBox has nothing
-real to attach the skybox surfaces to. Ported against a local placeholder of
-the same shape; reported as a blocking integration gap for the coordinator
-(r_model.ts needs to export `loadmodel`, or a setter, before R_InitSkyBox
-can do anything useful when Mod_LoadBrushModel calls it).
+`r_skytexinfo` is r_local.h's `sky_texinfo`, exported from here (R_SetSky in
+r_main.ts fills in the images R_InitSkyBox/R_RenderFace draw with).
+`loadmodel` is r_model.c's own global, read by R_InitSkyBox and resolved
+lazily from r_model.ts per PORTING.md's import-cycle rule -- r_model.ts
+already resolves this module to make the R_InitSkyBox call.
 */
 
 import { type Vec3, vec3, DotProduct, VectorSubtract, VectorCopy } from "../shared/math";
@@ -86,6 +63,19 @@ import {
   r_framecount,
   insubmodel,
   r_clipflags,
+  currentmodel,
+  currententity,
+  r_pcurrentvertbase,
+  surface_p,
+  edge_p,
+  r_outofsurfaces,
+  r_outofedges,
+  r_alpha_surfaces,
+  SetSurfaceP,
+  SetEdgeP,
+  SetOutOfSurfaces,
+  SetOutOfEdges,
+  SetAlphaSurfaces,
   NEAR_CLIP,
   xscale,
   yscale,
@@ -95,15 +85,14 @@ import {
   yscaleinv,
   ri,
 } from "./r_local";
-import { MedgeT, MsurfaceT, MtexinfoT, type MplaneT, type ModelT, MvertexT, SURF_DRAWSKYBOX } from "./r_model";
-import type * as BspModule from "./r_bsp";
+import { MedgeT, MsurfaceT, MtexinfoT, type MplaneT, MvertexT, SURF_DRAWSKYBOX } from "./r_model";
+import type * as ModelModule from "./r_model";
 
-// r_bsp.ts <-> r_rast.ts import-cycle rule: r_bsp.ts statically imports
-// R_RenderFace/R_RenderBmodelFace/rKey from here, so this file resolves the
-// reverse edge (reading r_bsp.ts's currentmodel/currententity/
-// r_pcurrentvertbase shadow) lazily instead of with a static import.
-function bspMod(): typeof BspModule {
-  return require("./r_bsp");
+// import-cycle rule (PORTING.md): r_model.ts statically resolves this module
+// to call R_InitSkyBox, so `loadmodel` is read back lazily rather than with a
+// static import the other way.
+function modelMod(): typeof ModelModule {
+  return require("./r_model");
 }
 
 //===========================================================================
@@ -115,13 +104,6 @@ let cacheoffset = 0;
 export let c_faceclip = 0;
 export let r_polycount = 0;
 
-export let surface_p = 0;
-export let edge_p = 0;
-
-let r_outofsurfaces = 0;
-let r_outofedges = 0;
-
-export let r_alpha_surfaces: MsurfaceT | null = null;
 
 // r_currentkey's real home is r_edge.c, r_currentbkey's is r_bsp.c; neither
 // is exported by r_local.ts today (see header comment) -- shared here as a
@@ -190,14 +172,12 @@ const box_verts: Vec3[] = [
   vec3(1, 1, 1),
 ];
 
-// see this file's header comment: r_model.ts's real `loadmodel` is not
-// exported, so this is an inert placeholder R_InitSkyBox operates against.
-let loadmodel: ModelT | null = null;
-
 let r_skyframe = -1;
 let r_skyfaces: MsurfaceT[] = [];
 const r_skyplanes: MplaneT[] = [new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT()];
-const r_skytexinfo: MtexinfoT[] = [new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT()];
+// r_local.h's `sky_texinfo` is this same storage (R_SetSky, r_main.ts, fills
+// in the images); exported so that write lands on what R_RenderFace draws.
+export const r_skytexinfo: MtexinfoT[] = [new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT()];
 let r_skyverts: MvertexT[] = [];
 let r_skyedges: MedgeT[] = [];
 
@@ -207,7 +187,7 @@ R_InitSkyBox
 ================
 */
 export function R_InitSkyBox(): void {
-  if (!loadmodel) throw new Error("R_InitSkyBox: loadmodel not available (see file header comment)");
+  const loadmodel = modelMod().loadmodel;
 
   r_skyfaces = [];
   for (let i = 0; i < 6; i++) r_skyfaces.push(new MsurfaceT());
@@ -380,7 +360,7 @@ export function R_EmitEdge(pv0: MvertexT, pv1: MvertexT): void {
   const side = ceilv0 > r_ceilv1 ? 1 : 0;
 
   const edge = r_edges[edge_p];
-  edge_p++;
+  SetEdgeP(edge_p + 1);
 
   edge.owner = r_pedge;
   edge.nearzi = lzi0;
@@ -554,7 +534,7 @@ export function R_RenderFace(fa: MsurfaceT, clipflags: number): void {
   // translucent surfaces are not drawn by the edge renderer
   if (fa.texinfo.flags & (SURF_TRANS33 | SURF_TRANS66)) {
     fa.nextalphasurface = r_alpha_surfaces;
-    r_alpha_surfaces = fa;
+    SetAlphaSurfaces(fa);
     return;
   }
 
@@ -569,13 +549,13 @@ export function R_RenderFace(fa: MsurfaceT, clipflags: number): void {
 
   // skip out if no more surfs
   if (surface_p >= surf_max) {
-    r_outofsurfaces++;
+    SetOutOfSurfaces(r_outofsurfaces + 1);
     return;
   }
 
   // ditto if not enough edges left, or switch to auxedges if possible
   if (edge_p + fa.numedges + 4 >= edge_max) {
-    r_outofedges += fa.numedges;
+    SetOutOfEdges(r_outofedges + fa.numedges);
     return;
   }
 
@@ -591,7 +571,6 @@ export function R_RenderFace(fa: MsurfaceT, clipflags: number): void {
     }
   }
 
-  const { currentmodel, currententity, r_pcurrentvertbase } = bspMod();
   if (!currentmodel) throw new Error("R_RenderFace: currentmodel not set");
   if (!r_pcurrentvertbase) throw new Error("R_RenderFace: r_pcurrentvertbase not set");
 
@@ -690,7 +669,7 @@ export function R_RenderFace(fa: MsurfaceT, clipflags: number): void {
   s.d_zistepv = -p_normal[1] * yscaleinv * distinv;
   s.d_ziorigin = p_normal[2] * distinv - xcenter * s.d_zistepu - ycenter * s.d_zistepv;
 
-  surface_p++;
+  SetSurfaceP(surface_p + 1);
 }
 
 /*
@@ -703,7 +682,7 @@ export function R_RenderBmodelFace(pedges: BedgeT | null, psurf: MsurfaceT): voi
 
   if (psurf.texinfo.flags & (SURF_TRANS33 | SURF_TRANS66)) {
     psurf.nextalphasurface = r_alpha_surfaces;
-    r_alpha_surfaces = psurf;
+    SetAlphaSurfaces(psurf);
     return;
   }
 
@@ -711,13 +690,13 @@ export function R_RenderBmodelFace(pedges: BedgeT | null, psurf: MsurfaceT): voi
 
   // skip out if no more surfs
   if (surface_p >= surf_max) {
-    r_outofsurfaces++;
+    SetOutOfSurfaces(r_outofsurfaces + 1);
     return;
   }
 
   // ditto if not enough edges left, or switch to auxedges if possible
   if (edge_p + psurf.numedges + 4 >= edge_max) {
-    r_outofedges += psurf.numedges;
+    SetOutOfEdges(r_outofedges + psurf.numedges);
     return;
   }
 
@@ -774,7 +753,6 @@ export function R_RenderBmodelFace(pedges: BedgeT | null, psurf: MsurfaceT): voi
 
   r_polycount++;
 
-  const { currententity } = bspMod();
   const s = surfaces[surface_p];
   s.msurf = psurf;
   s.nearzi = r_nearzi;
@@ -795,5 +773,5 @@ export function R_RenderBmodelFace(pedges: BedgeT | null, psurf: MsurfaceT): voi
   s.d_zistepv = -p_normal[1] * yscaleinv * distinv;
   s.d_ziorigin = p_normal[2] * distinv - xcenter * s.d_zistepu - ycenter * s.d_zistepv;
 
-  surface_p++;
+  SetSurfaceP(surface_p + 1);
 }

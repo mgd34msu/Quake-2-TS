@@ -56,7 +56,7 @@ import {
   dvisBitofs,
 } from "../qcommon/qfiles";
 import { PendingPort } from "../qcommon/pending";
-import { type SurfcacheT, ri, r_notexture_mip, MAX_LBM_HEIGHT } from "./r_local";
+import { type SurfcacheT, ri, r_notexture_mip, r_worldmodel, MAX_LBM_HEIGHT, SetWorldModel, SetOldViewCluster } from "./r_local";
 import type * as RImageModule from "./r_image";
 import type * as RRastModule from "./r_rast";
 import type * as RMainModule from "./r_main";
@@ -353,23 +353,11 @@ export function SetRegistrationSequence(v: number): void {
   registration_sequence = v;
 }
 
-// r_worldmodel/r_oldviewcluster are declared as `extern` in r_local.h but
-// actually *defined* in r_main.c (see PORTING.md: "the brief's placement
-// wins; report the mismatch, don't move it" -- this file's own header
-// comment already establishes that precedent for image_t). r_local.ts's
-// header module carries `export let r_worldmodel`/`export let
-// r_oldviewcluster` for the rest of the renderer to read, but this module
-// cannot reassign either binding from here: ESM named imports are read-only
-// to the importer, and r_local.ts has no setter (unlike g_local.ts's
-// SetGEdicts for the same "reassigned pointer" situation -- see
-// PORTING.md's globals section). Since r_local.ts is out of this unit's
-// scope, R_BeginRegistration/R_RegisterModel below mutate a same-named local
-// copy instead. Every current reader of r_local.ts's copies (r_main.ts,
-// r_bsp.ts, ...) is itself still a PendingPort stub, so nothing observes the
-// staleness yet; flagged as a follow-up for the coordinator to add a real
-// setter to r_local.ts (or move the declarations here) once those units land.
-let r_worldmodel: ModelT | null = null;
-let r_oldviewcluster = 0;
+// r_worldmodel/r_oldviewcluster are declared as `extern` in r_local.h and
+// actually *defined* in r_main.c; r_local.ts owns both for the whole
+// renderer, and R_BeginRegistration below assigns them through its setters
+// (an imported `let` binding is read-only to the importer -- the same
+// situation as g_local.ts's SetGEdicts, see PORTING.md's globals section).
 
 const MAX_MOD_KNOWN = 256;
 // Exported beyond r_model.h's surface purely for test introspection: several
@@ -392,7 +380,7 @@ const mod_novis = new Uint8Array(MAX_MAP_LEAFS / 8);
 // globals (reassigned across every Mod_Load* helper call, never read before
 // Mod_ForName assigns them -- see cmodel.ts's cmod_view for the same
 // dummy-default-instead-of-null pattern).
-let loadmodel: ModelT = new ModelT();
+export let loadmodel: ModelT = new ModelT();
 let mod_view: DataView = new DataView(new ArrayBuffer(0));
 
 let r_leaftovis: number[] = [];
@@ -1369,7 +1357,7 @@ Specifies the model that will be used as the world
 */
 export function R_BeginRegistration(model: string): void {
   registration_sequence++;
-  r_oldviewcluster = -1; // force markleafs
+  SetOldViewCluster(-1); // force markleafs
   const fullname = Com_sprintf("maps/%s.bsp", model);
 
   rSurfMod().D_FlushCaches();
@@ -1379,7 +1367,7 @@ export function R_BeginRegistration(model: string): void {
   if (mod_known[0].name !== fullname || (flushmap && flushmap.value)) {
     Mod_Free(mod_known[0]);
   }
-  r_worldmodel = R_RegisterModel(fullname);
+  SetWorldModel(R_RegisterModel(fullname));
   rMainMod().R_NewMap();
 }
 

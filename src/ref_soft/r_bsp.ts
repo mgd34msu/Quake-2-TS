@@ -20,18 +20,12 @@ Ported from ref_soft/r_bsp.c (GNU GPL v2 or later). `R_RecursiveClipBPoly`
 is a static internal helper (not declared in r_local.h) and is not exported,
 matching the sibling units' convention for internal helpers of this shape.
 
-Cross-module mutable state deviation (see r_rast.ts's header comment for the
-full explanation -- same wall, same shape, same precedent as r_model.ts's
-own reported `r_worldmodel` deviation): r_local.h declares `currentmodel`/
-`currententity`/`r_pcurrentvertbase` as globals R_RenderWorld assigns and
-R_RenderFace/R_RenderBmodelFace (r_rast.ts) read. r_local.ts carries these as
-bare `export let`s with no setter, and an ES module cannot reassign another
-module's imported `let` binding (tsc TS2632). Ported as local module state
-here instead; r_rast.ts reads it back lazily via `require()` to avoid a
-static import cycle (r_bsp.ts already statically imports R_RenderFace/
-R_RenderBmodelFace/rKey from r_rast.ts). Flagged as a follow-up for the
-coordinator to add real setters to r_local.ts once other ref_soft units
-need to observe the same values.
+Cross-module mutable state: `currentmodel`/`currententity`/
+`r_pcurrentvertbase`/`r_worldmodel` are r_local.h externs owned by r_local.ts.
+R_RenderWorld assigns the first three through its setters (an imported `let`
+binding is read-only to the importer) and R_RenderFace/R_RenderBmodelFace
+(r_rast.ts) read them back. All four are re-exported from here because
+r_light.ts/r_surf.ts/r_main.ts already reach them through this module.
 */
 
 import { type Vec3, vec3, DotProduct, VectorCopy, R_ConcatRotations, type Mat3 } from "../shared/math";
@@ -53,37 +47,30 @@ import {
   r_newrefdef,
   r_visframecount,
   r_framecount,
+  currentmodel,
+  currententity,
+  r_pcurrentvertbase,
+  r_worldmodel,
+  SetCurrentModel,
+  SetCurrentEntity,
+  SetCurrentVertBase,
+  SetWorldModel,
   view_clipplanes,
   pfrustum_indexes,
   rCvars,
   ri,
 } from "./r_local";
 import { type MnodeOrLeaf, type ModelT, type MsurfaceT, MvertexT, isMleaf, SURF_PLANEBACK } from "./r_model";
-import type { EntityT } from "../client/ref";
 import { R_TransformFrustum } from "./r_misc";
 import { R_RenderFace, R_RenderBmodelFace, rKey } from "./r_rast";
 
-// see this file's header comment: shadows r_local.h's `currentmodel`/
-// `currententity`/`r_pcurrentvertbase` externs, which r_local.ts cannot be
-// reassigned through from here.
-export let currentmodel: ModelT | null = null;
-export let currententity: EntityT | null = null;
-export let r_pcurrentvertbase: MvertexT[] | null = null;
-// r_worldmodel is also r_local.h extern (real writer is r_main.c's
-// R_NewMap, out of this brief's SCOPE); shadowed the same way so
-// R_RecursiveWorldNode/R_RenderWorld and this unit's tests (and r_light.ts,
-// which reads it from here) have something settable. r_model.ts reports the
-// identical deviation for its own copy of this same field.
-export let r_worldmodel: ModelT | null = null;
+// `currentmodel`/`currententity`/`r_pcurrentvertbase`/`r_worldmodel` are
+// r_local.h externs owned by r_local.ts; re-exported here because r_light.ts/
+// r_surf.ts/r_main.ts already reach them through this module.
+export { currentmodel, currententity, r_pcurrentvertbase, r_worldmodel } from "./r_local";
 
-// test-only setter for the shadow above, same shape as cmodel.ts's
-// CM_MarkMapLoadedForTesting / r_model.ts's mod_known export: nothing in
-// this brief's real C-facing API reassigns r_worldmodel (R_NewMap owns that
-// in r_main.c, out of SCOPE), but this unit's tests (and r_light.ts, which
-// reads r_worldmodel from here) need a way to point it at a fabricated
-// model.
 export function setWorldModelForTesting(m: ModelT | null): void {
-  r_worldmodel = m;
+  SetWorldModel(m);
 }
 
 export let c_drawnode = 0;
@@ -517,12 +504,12 @@ export function R_RenderWorld(): void {
 
   // auto cycle the world frame for texture animation
   r_worldentity.frame = Math.trunc(r_newrefdef.time * 2);
-  currententity = r_worldentity;
+  SetCurrentEntity(r_worldentity);
 
   VectorCopy(r_origin, modelorg);
   if (!r_worldmodel) throw new Error("R_RenderWorld: r_worldmodel not set");
-  currentmodel = r_worldmodel;
-  r_pcurrentvertbase = currentmodel.vertexes;
+  SetCurrentModel(r_worldmodel);
+  SetCurrentVertBase(r_worldmodel.vertexes);
 
-  R_RecursiveWorldNode(currentmodel.nodes[0], 15);
+  R_RecursiveWorldNode(r_worldmodel.nodes[0], 15);
 }

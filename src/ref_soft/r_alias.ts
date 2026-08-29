@@ -32,25 +32,18 @@ exported by r_model.ts (out of this unit's SCOPE to change), so this file
 names them via the indexed-access types `DaliasframeLike`/`DtrivertxLike`
 below instead of importing the class names directly.
 
-Cross-module mutable-state deviations (imported `let` bindings are
-read-only outside their declaring module, same wall documented in
-r_scan.ts/r_misc.ts/r_polyse.ts):
-- `r_amodels_drawn` is redeclared and exported locally (r_local.ts's copy
-  has no other reader/writer currently, so it becomes the inert duplicate).
-- `r_aliasblendcolor` is now owned by r_polyse.ts (see that file's header
-  comment) -- this file calls its exported `R_SetAliasBlendColor` setter.
-- `aliasxscale`/`aliasyscale`/`aliasxcenter`/`aliasycenter` are owned by
-  r_misc.ts (per that module's header comment: "r_local.ts has no setters
-  for these... ported as module-local state here instead"), and r_misc.ts
-  does not export them, so this file cannot read *or* write the live,
-  per-frame-updated values at all from within its own SCOPE. It snapshots
-  r_local.ts's (inert/stale) exported copies into its own local
-  `l_aliasxscale`/`l_aliasyscale`/`l_aliasxcenter`/`l_aliasycenter` at the
-  top of R_AliasDrawModel and performs the RF_WEAPONMODEL left-hand x-flip
-  on that local snapshot instead of mutating an import. Reported as a
-  follow-up: the coordinator should have r_misc.ts export getters/setters
-  (mirroring r_local.ts's `SetRefImports` precedent for `ri`) so all three
-  units observe the same live values.
+Cross-module mutable state (imported `let` bindings are read-only outside
+their declaring module, so every r_local.h extern written from here goes
+through a setter): `r_amodels_drawn` through r_local.ts's `SetAmodelsDrawn`,
+`r_aliasblendcolor` through r_polyse.ts's `R_SetAliasBlendColor` (r_polyse.c
+is the C reader, in the ConstantX_33/66 span drawers).
+`aliasxscale`/`aliasyscale`/`aliasxcenter`/`aliasycenter` are read from
+r_local.ts, where R_ViewChanged (r_misc.ts) refreshes them every frame;
+R_AliasDrawModel snapshots them into `l_alias*` locals and performs the
+RF_WEAPONMODEL left-hand x-flip on the snapshot. The C original flips the
+global itself and never restores it, so a weapon model there leaves the flip
+in place for the rest of the frame -- reported deviation, the snapshot is
+confined to one model.
 */
 
 import { AngleVectors, DotProduct, R_ConcatTransforms, VectorCopy, VectorInverse, VectorSubtract, type Mat3x4, type Vec3, vec3 } from "../shared/math";
@@ -103,6 +96,8 @@ import {
   vright,
   vup,
   FinalvertT,
+  r_amodels_drawn,
+  SetAmodelsDrawn,
 } from "./r_local";
 import { ImageT, ModelT, ParsedMd2T } from "./r_model";
 
@@ -110,9 +105,6 @@ const LIGHT_MIN = 5; // lowest light value we'll allow, to avoid the need for in
 
 type DaliasframeLike = ParsedMd2T["frames"][number];
 type DtrivertxLike = DaliasframeLike["verts"][number];
-
-// relocated ownership -- see file header comment.
-export let r_amodels_drawn = 0;
 
 let l_aliasxscale = 0;
 let l_aliasyscale = 0;
@@ -689,7 +681,7 @@ export function R_AliasDrawModel(): void {
     return;
   }
 
-  r_amodels_drawn++;
+  SetAmodelsDrawn(r_amodels_drawn + 1);
   R_AliasSetupLighting();
 
   // select the proper span routine based on translucency

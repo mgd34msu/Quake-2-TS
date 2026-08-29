@@ -30,7 +30,7 @@ import { SetRefImports } from "../src/ref_soft/r_local";
 import { PendingPort } from "../src/qcommon/pending";
 import { vec3 } from "../src/shared/math";
 import { CONTENTS_SOLID } from "../src/shared/q_shared";
-import {
+import { Mod_FreeAll,
   Mod_ForName,
   Mod_PointInLeaf,
   Mod_ClusterPVS,
@@ -120,6 +120,7 @@ function makeFakeRi(): RefImports {
 beforeEach(() => {
   SetRefImports(makeFakeRi());
   Mod_Init(); // fills mod_novis with 0xff, matching r_main.c's startup sequence
+  Mod_FreeAll(); // rule 13: the frame-render suite caches models by name
 });
 
 // ---------------------------------------------------------------------------
@@ -388,10 +389,11 @@ describe("Mod_LoadBrushModel: node/leaf tree over a hand-built IBSP", () => {
     expect(model.numplanes).toBe(6);
     expect(model.numnodes).toBe(6);
     expect(model.numleafs).toBe(2);
-    // the source BSP's FACES/EDGES lumps are empty -- surface/edge counts
-    // must match that (see file header for why texinfo/faces are 0 here).
-    expect(model.numsurfaces).toBe(0);
-    expect(model.numedges).toBe(0);
+    // the source BSP's FACES/EDGES lumps are empty, so every surface/edge
+    // present comes from Mod_LoadBrushModel's closing R_InitSkyBox call,
+    // which appends the 6 skybox faces / 8 verts / 12 edges.
+    expect(model.numsurfaces).toBe(6);
+    expect(model.numedges).toBe(12);
 
     const insideLeaf = Mod_PointInLeaf(vec3(0, 0, 0), model);
     expect(isMleaf(insideLeaf)).toBe(true);

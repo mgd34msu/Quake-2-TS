@@ -5,6 +5,17 @@ there is no r_local.c -- so this carries only types, constants, and the
 shared mutable globals every r_*.ts module reads/writes, mirroring
 g_local.ts's role for the game track.
 
+An imported `let` binding is read-only to the importer, so every global here
+that a sibling module reassigns has a `Set*` setter next to it (the same shape
+as g_local.ts's SetGameImports/SetGEdicts and PORTING.md's "C globals that are
+reassigned pointers become fields on their owning singleton or a small
+exported holder object"); readers import the binding itself and see the live
+value. A few r_local.h externs are owned by the module that is their only
+reader and writer instead of living here -- r_scan.ts (span gradients and
+frame/z buffers), r_surf.ts (surface cache rover), r_part.ts (particle clip
+rect), r_polyse.ts (polygon-set edge stepping), r_rast.ts (`sky_texinfo`, as
+`r_skytexinfo`) -- each noted at the point where it would otherwise appear.
+
 `image_t`/model_t/msurface_t/mnode_t/mleaf_t/mtexinfo_t/medge_t live in
 r_model.ts per that module's header comment (brief places image_t there
 even though the true C source declares it in r_local.h just above
@@ -20,7 +31,7 @@ import { type Vec3, vec3 } from "../shared/math";
 import { CplaneT, type CvarT } from "../shared/q_shared";
 import type { RefImports } from "../client/ref";
 import { EntityT, RefdefT } from "../client/ref";
-import type { ImageT, MedgeT, ModelT, MleafT, MplaneT, MsurfaceT, MtexinfoT, MvertexT } from "./r_model";
+import type { ImageT, MedgeT, ModelT, MleafT, MplaneT, MsurfaceT, MvertexT } from "./r_model";
 
 export const REF_VERSION = "SOFT 0.01";
 
@@ -340,6 +351,18 @@ export let r_framecount = 0; // sequence # of current frame since Quake started
 export let r_aliasuvscale = 0; // scale-up factor for screen u and v on Alias vertices passed to driver
 export let r_dowarp = false;
 
+export function SetFrameCount(v: number): void {
+  r_framecount = v;
+}
+
+export function SetAliasUvScale(v: number): void {
+  r_aliasuvscale = v;
+}
+
+export function SetDowarp(v: boolean): void {
+  r_dowarp = v;
+}
+
 export const r_affinetridesc: AffinetridescT = new AffinetridescT();
 
 export const r_pright: Vec3 = vec3();
@@ -353,57 +376,38 @@ export let acolormap: unknown = null; // FIXME: should go away
 
 export const r_drawsurf: DrawsurfT = new DrawsurfT();
 
-export let c_surf = 0;
-
 export const r_warpbuffer: Uint8Array = new Uint8Array(WARP_WIDTH * WARP_HEIGHT);
 
 export let scale_for_mip = 0;
-
-export let d_roverwrapped = false;
-export let sc_rover: SurfcacheT | null = null;
-export let d_initial_rover: SurfcacheT | null = null;
-
-export let d_sdivzstepu = 0;
-export let d_tdivzstepu = 0;
-export let d_zistepu = 0;
-export let d_sdivzstepv = 0;
-export let d_tdivzstepv = 0;
-export let d_zistepv = 0;
-export let d_sdivzorigin = 0;
-export let d_tdivzorigin = 0;
-export let d_ziorigin = 0;
-
-export let sadjust = 0; // fixed16_t
-export let tadjust = 0; // fixed16_t
-export let bbextents = 0; // fixed16_t
-export let bbextentt = 0; // fixed16_t
-
-export let d_vrectx = 0;
-export let d_vrecty = 0;
-export let d_vrectright_particle = 0;
-export let d_vrectbottom_particle = 0;
-
-export let d_pix_min = 0;
-export let d_pix_max = 0;
-export let d_pix_shift = 0;
-
-export let d_viewbuffer: Uint8Array | null = null;
-export let d_pzbuffer: Int16Array | null = null;
 export let d_zrowbytes = 0;
-export let d_zwidth = 0;
+export let d_minmip = 0;
+
+// `c_surf`/`sc_base`/`sc_rover`/`d_roverwrapped`/`d_initial_rover` are owned
+// by r_surf.ts (the surface cache allocator is their only reader/writer);
+// `cacheblock`/`cachewidth`/`d_viewbuffer`/`r_screenwidth`/`d_pzbuffer`/
+// `d_zwidth` and the `d_sdivz*`/`d_tdivz*`/`d_zistep*`/`d_ziorigin`/
+// `sadjust`/`tadjust`/`bbextent*` gradients by r_scan.ts (its D_Set* family);
+// `d_vrect*`/`d_pix_*` by r_part.ts (its D_SetParticle* family);
+// `ubasestep`/`errorterm`/`erroradjust*` by r_polyse.ts.
+
 export const zspantable: (Int16Array | null)[] = new Array<Int16Array | null>(MAXHEIGHT).fill(null);
 export const d_scantable: number[] = new Array<number>(MAXHEIGHT).fill(0);
 
-export let d_minmip = 0;
 export const d_scalemip: number[] = new Array<number>(3).fill(0);
+
+export function D_SetMipState(scaleForMip: number, minmip: number, zrowbytes: number): void {
+  scale_for_mip = scaleForMip;
+  d_minmip = minmip;
+  d_zrowbytes = zrowbytes;
+}
 
 //===================================================================
 
-export let cachewidth = 0;
-export let cacheblock: Uint8Array | null = null;
-export let r_screenwidth = 0;
-
 export let r_drawnpolycount = 0;
+
+export function SetDrawnPolyCount(v: number): void {
+  r_drawnpolycount = v;
+}
 
 export const sintable: number[] = new Array<number>(1280).fill(0);
 export const intsintable: number[] = new Array<number>(1280).fill(0);
@@ -425,6 +429,18 @@ export let surfaces: SurfT[] | null = null;
 export let surface_p: number = 0; // index into `surfaces`, replaces the C `surf_t *` cursor
 export let surf_max: number = 0;
 
+export function SetSurfaces(v: SurfT[] | null): void {
+  surfaces = v;
+}
+
+export function SetSurfaceP(v: number): void {
+  surface_p = v;
+}
+
+export function SetSurfMax(v: number): void {
+  surf_max = v;
+}
+
 //===================================================================
 
 export const sxformaxis: [Vec3, Vec3, Vec3, Vec3] = [vec3(), vec3(), vec3(), vec3()]; // s axis transformed into viewspace
@@ -439,10 +455,54 @@ export let yscaleinv = 0;
 export let xscaleshrink = 0;
 export let yscaleshrink = 0;
 
-export let ubasestep = 0;
-export let errorterm = 0;
-export let erroradjustup = 0;
-export let erroradjustdown = 0;
+// R_ViewChanged (r_misc.ts) recomputes this whole block together every frame;
+// one grouped setter rather than fifteen, same shape as r_scan.ts's
+// D_SetStGradients.
+export interface ViewScalesT {
+  xcenter: number;
+  ycenter: number;
+  xscale: number;
+  yscale: number;
+  xscaleinv: number;
+  yscaleinv: number;
+  xscaleshrink: number;
+  yscaleshrink: number;
+  aliasxscale: number;
+  aliasyscale: number;
+  aliasxcenter: number;
+  aliasycenter: number;
+  verticalFieldOfView: number;
+  xOrigin: number;
+  yOrigin: number;
+}
+
+export function SetViewCenter(xc: number, yc: number): void {
+  xcenter = xc;
+  ycenter = yc;
+}
+
+export function SetViewShrink(xs: number, ys: number): void {
+  xscaleshrink = xs;
+  yscaleshrink = ys;
+}
+
+export function R_SetViewScales(v: ViewScalesT): void {
+  xcenter = v.xcenter;
+  ycenter = v.ycenter;
+  xscale = v.xscale;
+  yscale = v.yscale;
+  xscaleinv = v.xscaleinv;
+  yscaleinv = v.yscaleinv;
+  xscaleshrink = v.xscaleshrink;
+  yscaleshrink = v.yscaleshrink;
+  aliasxscale = v.aliasxscale;
+  aliasyscale = v.aliasyscale;
+  aliasxcenter = v.aliasxcenter;
+  aliasycenter = v.aliasycenter;
+  verticalFieldOfView = v.verticalFieldOfView;
+  xOrigin = v.xOrigin;
+  yOrigin = v.yOrigin;
+}
 
 //===========================================================================
 
@@ -536,10 +596,30 @@ export let r_visframecount = 0;
 
 export let r_alpha_surfaces: MsurfaceT | null = null;
 
+export function SetCurrentModel(v: ModelT | null): void {
+  currentmodel = v;
+}
+
+export function SetCurrentEntity(v: EntityT | null): void {
+  currententity = v;
+}
+
+export function SetVisFrameCount(v: number): void {
+  r_visframecount = v;
+}
+
+export function SetAlphaSurfaces(v: MsurfaceT | null): void {
+  r_alpha_surfaces = v;
+}
+
 //=============================================================================
 
 // current entity info
 export let insubmodel = false;
+
+export function SetInsubmodel(v: boolean): void {
+  insubmodel = v;
+}
 
 //=============================================================================
 
@@ -549,6 +629,30 @@ export let r_numallocatededges = 0;
 export let r_edges: EdgeT[] | null = null;
 export let edge_p = 0;
 export let edge_max = 0;
+
+export function SetAmodelsDrawn(v: number): void {
+  r_amodels_drawn = v;
+}
+
+export function SetAuxEdges(v: EdgeT[] | null): void {
+  auxedges = v;
+}
+
+export function SetNumAllocatedEdges(v: number): void {
+  r_numallocatededges = v;
+}
+
+export function SetEdges(v: EdgeT[] | null): void {
+  r_edges = v;
+}
+
+export function SetEdgeP(v: number): void {
+  edge_p = v;
+}
+
+export function SetEdgeMax(v: number): void {
+  edge_max = v;
+}
 
 export const newedges: (EdgeT | null)[] = new Array<EdgeT | null>(MAXHEIGHT).fill(null);
 export const removeedges: (EdgeT | null)[] = new Array<EdgeT | null>(MAXHEIGHT).fill(null);
@@ -570,6 +674,22 @@ export let r_outofedges = 0;
 
 export let r_pcurrentvertbase: MvertexT[] | null = null;
 export let r_maxvalidedgeoffset = 0;
+
+export function SetAliasBlendColor(v: number): void {
+  r_aliasblendcolor = v;
+}
+
+export function SetOutOfSurfaces(v: number): void {
+  r_outofsurfaces = v;
+}
+
+export function SetOutOfEdges(v: number): void {
+  r_outofedges = v;
+}
+
+export function SetCurrentVertBase(v: MvertexT[] | null): void {
+  r_pcurrentvertbase = v;
+}
 
 export class AliastriangleparmsT {
   a: FinalvertT | null = null;
@@ -611,15 +731,58 @@ export let r_fov_greater_than_90 = false;
 export let r_notexture_mip: ImageT | null = null;
 export let r_worldmodel: ModelT | null = null;
 
-export const r_newrefdef: RefdefT = new RefdefT();
+export function SetMaxSurfsSeen(v: number): void {
+  r_maxsurfsseen = v;
+}
 
-export let sc_base: SurfcacheT | null = null;
+export function SetMaxEdgesSeen(v: number): void {
+  r_maxedgesseen = v;
+}
+
+export function SetCnumSurfs(v: number): void {
+  r_cnumsurfs = v;
+}
+
+export function SetSurfsOnStack(v: boolean): void {
+  r_surfsonstack = v;
+}
+
+export function SetViewLeaf(v: MleafT | null): void {
+  r_viewleaf = v;
+}
+
+export function SetViewCluster(v: number): void {
+  r_viewcluster = v;
+}
+
+export function SetOldViewCluster(v: number): void {
+  r_oldviewcluster = v;
+}
+
+export function SetClipflags(v: number): void {
+  r_clipflags = v;
+}
+
+export function SetDlightFrameCount(v: number): void {
+  r_dlightframecount = v;
+}
+
+export function SetNotextureMip(v: ImageT | null): void {
+  r_notexture_mip = v;
+}
+
+export function SetWorldModel(v: ModelT | null): void {
+  r_worldmodel = v;
+}
+
+export const r_newrefdef: RefdefT = new RefdefT();
 
 export let colormap: unknown = null;
 
 //====================================================================
 
-export const sky_texinfo: (MtexinfoT | null)[] = [null, null, null, null, null, null];
+// `sky_texinfo` (r_local.h) is the same storage as r_rast.c's `r_skytexinfo`,
+// which R_InitSkyBox/R_RenderFace draw with; r_rast.ts owns and exports it.
 
 export class SwstateT {
   fullscreen = false;

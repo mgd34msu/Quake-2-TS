@@ -48,7 +48,7 @@ by this module instead of the dead r_local.ts copies.
 import { RDF_IRGOGGLES, RF_IR_VISIBLE } from "../shared/q_shared";
 import { rand1k, MASK_1K } from "./rand1k";
 import { adivtabQuotient, adivtabRemainder, adivtabIndex } from "./adivtab";
-import { MAXHEIGHT, MAX_LBM_HEIGHT, aliastriangleparms, currententity, r_affinetridesc, r_newrefdef, vid } from "./r_local";
+import { MAXHEIGHT, MAX_LBM_HEIGHT, aliastriangleparms, currententity, r_affinetridesc, r_aliasblendcolor, r_newrefdef, vid, SetAliasBlendColor } from "./r_local";
 import { d_pzbuffer, d_viewbuffer, d_zwidth, r_screenwidth } from "./r_scan";
 
 // !!! if this is changed, it must be changed in d_polysa.s too !!!
@@ -199,17 +199,12 @@ let skinstart: Uint8Array | null = null;
 
 let d_pdrawspans: DrawSpansFn | null = null;
 
-// r_local.ts's `export let r_aliasblendcolor` is an inert duplicate for the
-// same reason as ubasestep/errorterm above (imported `let` bindings are
-// read-only outside their declaring module): r_alias.ts (the C-original
-// writer, via the RF_SHELL_* color selection in R_AliasDrawModel) needs to
-// set this and r_polyse.ts (the C-original reader, in the ConstantX_33/66
-// span drawers) needs to read it, so ownership is relocated here with an
-// exported setter, matching r_scan.ts's D_Set* precedent.
-let r_aliasblendcolor = 0;
-
+// `r_aliasblendcolor` is an r_local.h extern owned by r_local.ts, written by
+// r_alias.ts (the RF_SHELL_* color selection in R_AliasDrawModel) and read
+// here (the ConstantX_33/66 span drawers). This is the setter r_alias.ts
+// calls, since an imported `let` binding is read-only to the importer.
 export function R_SetAliasBlendColor(v: number): void {
-  r_aliasblendcolor = v;
+  SetAliasBlendColor(v);
 }
 
 // PGM: `extern byte iractive;` -- set by R_AliasPreparePoints (r_alias.ts),
