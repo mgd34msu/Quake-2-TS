@@ -1,5 +1,6 @@
 // cl_parse.c -- parse a message received from the server
 
+import { CDAudio_Play } from "../platform/cd_ogg";
 import { Sys_SendKeyEvents } from "../platform/sys";
 import { fixedLength } from "../shared/fixed";
 import { MSG_ReadByte, MSG_ReadShort, MSG_ReadLong, MSG_ReadString, MSG_ReadPos, MSG_WriteByte, MSG_WriteString } from "../qcommon/sizebuf";
@@ -488,9 +489,7 @@ export function CL_ParseConfigString(): void {
     CL_SetLightstyle(i - CS_LIGHTS);
   } else if (i === CS_CDTRACK) {
     if (cl.refresh_prepped) {
-      // CDAudio_Play -- cdaudio.h's six prototypes have no ported home yet
-      // (cdaudio.ts documents the gap: they belong to a future
-      // src/platform/cdaudio.ts). Dropped; reported.
+      CDAudio_Play(parseInt(cl.configstrings[CS_CDTRACK], 10) || 0, true);
     }
   } else if (i >= CS_MODELS && i < CS_MODELS + MAX_MODELS) {
     if (cl.refresh_prepped) {

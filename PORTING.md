@@ -17,6 +17,7 @@ Every worker follows this file. It is the contract; the check gate is `bun run c
 | `ref_soft/r_*.c` (C only; `.asm` files are hand-optimized duplicates of the C paths and are not ported) | `src/ref_soft/<basename>.ts` |
 | `linux/ win32/ solaris/ irix/` | `src/platform/` — ONE bun implementation of the sys/net/vid/snd interfaces (`sys.ts`, `net_udp.ts`, `vid.ts`, `snd.ts`). The per-OS dirs are alternative implementations of the same interface and are not transliterated. |
 | `null/*.c` | `src/null/<basename>.ts` (headless client stubs for the dedicated server) |
+| `linux/cd_linux.c`, `win32/cd_win.c` | `src/platform/cd_ogg.ts` — same six-entry `cdaudio.h` interface; the physical CD drive (ioctl/MCI redbook playback) is replaced by `music/NN.ogg` rips decoded via the system libvorbisfile (bun:ffi) into the mixer's raw-sample ring. Degrades to `src/null/cd_null.ts` behaviour when libvorbisfile is absent. |
 | `ctf/` | `src/ctf/` (last track; copies `src/game` structure) |
 | `ref_gl/gl_*.c` | `src/ref_gl/<basename>.ts`; the C `qgl` function-pointer table becomes the `QGL` interface in `src/ref_gl/qgl.ts`, bound to the system libGL via `bun:ffi` at runtime (`loadQGLFromSystem`, extensions via SDL's GetProcAddress), with a `QGLRecording` fake for tests. Extension entry points are `| null` exactly like the C pointers. GLimp lives in `src/platform/glimp.ts` over SDL GL contexts; `vid_ref gl` selects it at runtime. |
 

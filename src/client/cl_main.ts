@@ -48,7 +48,7 @@
 //   instead of adding fields to client.ts (out of SCOPE).
 
 import { IN_Shutdown } from "../platform/sdl";
-import { CDAudio_Shutdown, CDAudio_Init, CDAudio_Update } from "../null/cd_null";
+import { CDAudio_Shutdown, CDAudio_Init, CDAudio_Update } from "../platform/cd_ogg";
 import { Key_WriteBindings } from "./keys_impl";
 import { Cmd_Argc, Cmd_Argv, Cmd_Args, Cmd_AddCommand, Cmd_TokenizeString, Cbuf_AddText, Cbuf_Execute, setCmdForwardToServerHandler } from "../qcommon/cmd";
 import { Cvar_WriteVariables, Cvar_Get, Cvar_Set, Cvar_SetValue, Cvar_VariableValue, Cvar_VariableString, Cvar_Userinfo, SetUserinfoModified } from "../qcommon/cvar";

@@ -1,7 +1,8 @@
 // cl_view.c -- player rendering positioning
 
+import { CDAudio_Play } from "../platform/cd_ogg";
 import { type Vec3, vec3, VectorAdd, VectorClear, VectorScale } from "../shared/math";
-import { CVAR_ARCHIVE, Com_sprintf, CS_IMAGES, CS_MODELS, CS_PLAYERSKINS, CS_SKY, CS_SKYAXIS, CS_SKYROTATE, type CvarT, MAX_CLIENTS, MAX_IMAGES, MAX_MODELS, YAW } from "../shared/q_shared";
+import { CS_CDTRACK, CVAR_ARCHIVE, Com_sprintf, CS_IMAGES, CS_MODELS, CS_PLAYERSKINS, CS_SKY, CS_SKYAXIS, CS_SKYROTATE, type CvarT, MAX_CLIENTS, MAX_IMAGES, MAX_MODELS, YAW } from "../shared/q_shared";
 import { Cmd_AddCommand, Cmd_Argc, Cmd_Argv } from "../qcommon/cmd";
 import { Cvar_Get } from "../qcommon/cvar";
 import { Com_Error, Com_Printf } from "../qcommon/common";
@@ -339,7 +340,8 @@ export function CL_PrepRefresh(): void {
   cl.refresh_prepped = true;
   cl.force_refdef = true; // make sure we have a valid refdef
 
-  // start the cd track -- CDAudio_Play(atoi(cl.configstrings[CS_CDTRACK]), true)
+  // start the cd track
+  CDAudio_Play(parseInt(cl.configstrings[CS_CDTRACK], 10) || 0, true);
   // dropped: no CD audio backend is ported. cdaudio.ts documents this as a
   // future src/platform/cdaudio.ts unit (none of CDAudio_Init/Play/Stop/
   // Update/Activate/Shutdown are defined anywhere in the C tree either --
