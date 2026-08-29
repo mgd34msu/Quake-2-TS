@@ -59,6 +59,7 @@ function pickSpeed(): number {
 }
 
 export function SNDDMA_Init(): boolean {
+  submitted = 0; // fresh device, fresh queue: nothing has been handed over yet
   dma.channels = 2;
   dma.samplebits = 16;
   dma.speed = pickSpeed();
@@ -130,10 +131,13 @@ export function SNDDMA_Submit(): void {
   const totalFrames = dma.samples / dma.channels;
 
   // paintedtime went backwards (S_Init/S_StopAllSounds reset it), or the
-  // device fell so far behind that the ring already wrapped over the
-  // unsubmitted span: resync instead of sending stale audio.
+  // gap exceeds one ring (snd_restart resynced paintedtime to a device
+  // position the old cursor never saw): resync and send NOTHING stale. A
+  // queue device cannot "catch up" -- ring content older than the current
+  // paint pass is garbage, and pushing it pinned a permanent ring's worth
+  // (~1.5s) of latency onto every subsequent sound.
   if (paintedtime < submitted) submitted = paintedtime;
-  if (paintedtime - submitted > totalFrames) submitted = paintedtime - totalFrames;
+  if (paintedtime - submitted > totalFrames) submitted = paintedtime;
 
   let frames = paintedtime - submitted;
   if (frames <= 0) return;

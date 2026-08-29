@@ -133,6 +133,11 @@ export function S_Init(): void {
 
     soundtime = 0;
     setPaintedtime(0);
+    // the per-device-session position trackers must rebase with the fresh
+    // device (snd_restart), or the first GetSoundtime sees a "wrap" and
+    // vaults soundtime a full buffer ahead of a queue that starts empty
+    gGetSoundtimeBuffers = 0;
+    gGetSoundtimeOldsamplepos = 0;
 
     Com_Printf("sound sampling rate: %i\n", dma.speed);
 
