@@ -37,29 +37,15 @@ import { FindItemByClassname } from "./g_items";
 import { fire_rocket } from "./g_weapon";
 import { monster_use } from "./g_monster";
 import { G_FreeEdict, G_PickTarget, vectoangles, vtos } from "./g_utils";
-import { PendingPort } from "../qcommon/pending";
 
 function cvarNum(c: { value: number } | null): number {
   return c === null ? 0 : c.value;
 }
 
-// m_infantry.c has not landed yet (still a pending stub exporting only
-// SP_monster_infantry). turret_driver_die/SP_turret_driver call
-// infantry_die/infantry_stand from the C source; these local placeholders
-// preserve that call structure and throw PendingPort like the rest of the
-// project's pending stubs until m_infantry.ts lands for real.
-function infantry_die(self: EdictT, inflictor: EdictT, attacker: EdictT, damage: number): void {
-  void inflictor;
-  void attacker;
-  void damage;
-  void self;
-  throw new PendingPort("m_infantry.c:infantry_die");
-}
-
-function infantry_stand(self: EdictT): void {
-  void self;
-  throw new PendingPort("m_infantry.c:infantry_stand");
-}
+// g_turret.c declares these extern with a 4-arg infantry_die while the real
+// m_infantry.c definition takes 5 (trailing unused `point`); C linkage never
+// checks. The port passes vec3_origin for the unused parameter.
+import { infantry_die, infantry_stand } from "./m_infantry";
 
 export function AnglesNormalize(vec: Vec3): void {
   while (vec[0] > 360) vec[0] -= 360;
@@ -280,7 +266,7 @@ export function turret_driver_die(self: EdictT, inflictor: EdictT, attacker: Edi
     if (self.target_ent.teammaster !== null) self.target_ent.teammaster.owner = null;
   }
 
-  infantry_die(self, inflictor, attacker, damage);
+  infantry_die(self, inflictor, attacker, damage, vec3_origin);
 }
 
 export function turret_driver_think(self: EdictT): void {
