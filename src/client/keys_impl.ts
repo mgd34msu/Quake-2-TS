@@ -41,6 +41,7 @@ import {
   K_CTRL,
   K_SHIFT,
   K_F1,
+  K_F12,
   K_INS,
   K_DEL,
   K_PGDN,
@@ -691,7 +692,7 @@ export function Key_Event(key: number, down: boolean, time: number): void {
 
   // any key during the attract mode will bring up the menu
   let effectiveKey = key;
-  if (cl.attractloop && cls.key_dest !== KeydestT.key_menu) effectiveKey = K_ESCAPE;
+  if (cl.attractloop && cls.key_dest !== KeydestT.key_menu && !(key >= K_F1 && key <= K_F12)) effectiveKey = K_ESCAPE;
 
   // menu key is hardcoded, so the user can never unbind it
   if (effectiveKey === K_ESCAPE) {

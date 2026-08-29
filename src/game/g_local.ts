@@ -912,6 +912,7 @@ export const gameCvars: {
   timelimit: CvarT | null;
   password: CvarT | null;
   spectator_password: CvarT | null;
+  needpass: CvarT | null;
   g_select_empty: CvarT | null;
   dedicated: CvarT | null;
   filterban: CvarT | null;
@@ -944,6 +945,7 @@ export const gameCvars: {
   timelimit: null,
   password: null,
   spectator_password: null,
+  needpass: null,
   g_select_empty: null,
   dedicated: null,
   filterban: null,

@@ -1,4 +1,4 @@
-# Quake 2 (v3.19 GPL) → TypeScript port conventions
+# Quake 2 (v3.21 GPL) → TypeScript port conventions
 
 Source tree: `../quake-2-c` (id Software release, readme.txt). Runtime: bun.
 Every worker follows this file. It is the contract; the check gate is `bun run check`.

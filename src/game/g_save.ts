@@ -1253,6 +1253,7 @@ export function InitGame(): void {
   gameCvars.timelimit = gi.cvar("timelimit", "0", CVAR_SERVERINFO);
   gameCvars.password = gi.cvar("password", "", CVAR_USERINFO);
   gameCvars.spectator_password = gi.cvar("spectator_password", "", CVAR_USERINFO);
+  gameCvars.needpass = gi.cvar("needpass", "0", CVAR_SERVERINFO);
   gameCvars.filterban = gi.cvar("filterban", "1", 0);
 
   gameCvars.g_select_empty = gi.cvar("g_select_empty", "0", CVAR_ARCHIVE);

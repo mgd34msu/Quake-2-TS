@@ -145,11 +145,10 @@ function sPaintChannelFrom8(ch: ChannelT, sc: SfxcacheT, count: number, offset: 
   if (ch.leftvol > 255) ch.leftvol = 255;
   if (ch.rightvol > 255) ch.rightvol = 255;
 
-  // NOTE: `>> 11` on a value clamped to <= 255 always yields index 0 --
-  // this matches the shipped C exactly (see S_PaintChannels' own "FIXME;
-  // 8 bit asm is wrong now" comment). Bug preserved, not fixed; see report.
-  const lscale = sndScaletable[ch.leftvol >> 11];
-  const rscale = sndScaletable[ch.rightvol >> 11];
+  //ZOID-- >>11 has been changed to >>3, >>11 didn't make much sense
+  //as it would always be zero.
+  const lscale = sndScaletable[ch.leftvol >> 3];
+  const rscale = sndScaletable[ch.rightvol >> 3];
 
   for (let i = 0; i < count; i++) {
     const data = sc.data[ch.pos + i];

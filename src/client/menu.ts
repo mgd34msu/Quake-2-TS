@@ -789,16 +789,15 @@ function ControlsResetDefaultsFunc(): void {
 }
 
 function InvertMouseFunc(): void {
-  if (s_options_invertmouse_box.curvalue === 0) Cvar_SetValue("m_pitch", Math.abs(Cvar_VariableValue("m_pitch")));
-  else Cvar_SetValue("m_pitch", -Math.abs(Cvar_VariableValue("m_pitch")));
+  Cvar_SetValue("m_pitch", -Cvar_VariableValue("m_pitch"));
 }
 
 function LookspringFunc(): void {
-  Cvar_SetValue("lookspring", s_options_lookspring_box.curvalue);
+  Cvar_SetValue("lookspring", Cvar_VariableValue("lookspring") === 0 ? 1 : 0);
 }
 
 function LookstrafeFunc(): void {
-  Cvar_SetValue("lookstrafe", s_options_lookstrafe_box.curvalue);
+  Cvar_SetValue("lookstrafe", Cvar_VariableValue("lookstrafe") === 0 ? 1 : 0);
 }
 
 function UpdateVolumeFunc(): void {

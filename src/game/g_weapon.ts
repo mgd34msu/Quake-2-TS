@@ -753,7 +753,8 @@ export function fire_rail(self: EdictT, start: Vec3, aimdir: Vec3, damage: numbe
       water = true;
     } else {
       const hit = traceEdict(tr.ent);
-      if ((hit.svflags & SVF_MONSTER) !== 0 || hit.client !== null) ignore = hit;
+      //ZOID--added so rail goes through SOLID_BBOX entities (gibs, etc)
+      if ((hit.svflags & SVF_MONSTER) !== 0 || hit.client !== null || hit.solid === SolidT.SOLID_BBOX) ignore = hit;
       else ignore = null;
 
       if (hit !== self && hit.takedamage) {

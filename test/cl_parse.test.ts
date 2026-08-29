@@ -8,6 +8,7 @@ import { MAX_MAP_AREAS } from "../src/qcommon/qfiles";
 import { cl, cls, ConnstateT, clCvars, cl_entities, setRe } from "../src/client/client";
 import { CL_ParseServerMessage, CL_ParseServerData, CL_ParseConfigString, CL_ParseStartSoundPacket, SHOWNET } from "../src/client/cl_parse";
 import { CL_ParseEntityBits, CL_ParseDelta, CL_AddEntities, CL_GetEntitySoundOrigin } from "../src/client/cl_ents";
+import { V_ClearScene, r_entities, r_numentities } from "../src/client/cl_view";
 
 // Every net_message read in this suite starts from a clean read cursor;
 // tests build the wire bytes with MSG_Write* directly onto the shared
@@ -245,6 +246,62 @@ describe("svc_spawnbaseline + svc_frame -- full packet-entity wire fidelity agai
     expect(cl.frame.valid).toBe(true);
     expect(cl.frame.num_entities).toBe(1);
     expect(cls.state).toBe(ConnstateT.ca_active); // CL_ParseFrame's "getting a valid frame ends the connection process"
+  });
+});
+
+describe("modelindex2 > 0x7f -- 3.20/3.21 linked-model fix (D1.10)", () => {
+  test("round-trips modelindex2 above 127 through the wire delta encoding unchanged", () => {
+    const from = new EntityStateT();
+    const to = new EntityStateT();
+    to.number = 9;
+    to.modelindex2 = 200; // > 0x7f: 3.19's client-side "& 0x7F" hack used to corrupt this
+    MSG_WriteDeltaEntity(from, to, net_message, true, true);
+    MSG_BeginReading(net_message);
+
+    const { number, bits } = CL_ParseEntityBits();
+    const out = new EntityStateT();
+    CL_ParseDelta(from, out, number, bits);
+    expect(out.modelindex2).toBe(200);
+  });
+
+  test("CL_AddEntities draws the real modelindex2 model (no & 0x7F masking) and only makes the defender-sphere shell translucent by configstring name", () => {
+    const sentinelModel = {};
+    cl.model_draw[200] = sentinelModel;
+    // deliberately NOT "models/items/shell/tris.md2" -- proves translucency
+    // is keyed off the name, not off modelindex2's high bit as in 3.19
+    cl.configstrings[CS_MODELS + 200] = "models/objects/gibs/sm_meat/tris.md2";
+
+    const baseline = new EntityStateT();
+    baseline.number = 6;
+    baseline.modelindex = 3;
+    baseline.modelindex2 = 200;
+
+    MSG_WriteByte(net_message, SvcOpsT.svc_spawnbaseline);
+    MSG_WriteDeltaEntity(new EntityStateT(), baseline, net_message, true, true);
+
+    MSG_WriteByte(net_message, SvcOpsT.svc_frame);
+    MSG_WriteLong(net_message, 1); // serverframe
+    MSG_WriteLong(net_message, -1); // deltaframe <= 0: uncompressed
+    MSG_WriteByte(net_message, 0); // surpressCount
+    writeAreabits();
+    MSG_WriteByte(net_message, SvcOpsT.svc_playerinfo);
+    MSG_WriteShort(net_message, 0); // pflags = 0
+    MSG_WriteLong(net_message, 0); // statbits = 0
+    MSG_WriteByte(net_message, SvcOpsT.svc_packetentities);
+    MSG_WriteDeltaEntity(baseline, baseline, net_message, true, false); // force=true: re-send unchanged so it's present in this frame
+    MSG_WriteShort(net_message, 0); // end of packetentities
+
+    MSG_BeginReading(net_message);
+    expect(() => CL_ParseServerMessage()).not.toThrow();
+    expect(cls.state).toBe(ConnstateT.ca_active);
+
+    V_ClearScene();
+    CL_AddEntities();
+
+    // find the entity carrying the linked (modelindex2) model among everything V_AddEntity received
+    const linked = r_entities.slice(0, r_numentities).find((e) => e.model === sentinelModel);
+    expect(linked).toBeDefined();
+    expect(linked?.alpha).not.toBe(0.32); // not the defender-sphere shell -> not forced translucent
   });
 });
 

@@ -206,6 +206,29 @@ export function EndDMLevel(): void {
 
 /*
 =================
+CheckNeedPass
+=================
+*/
+export function CheckNeedPass(): void {
+  // if password or spectator_password has changed, update needpass
+  // as needed
+  const password = gameCvars.password;
+  const spectator_password = gameCvars.spectator_password;
+  if ((password !== null && password.modified) || (spectator_password !== null && spectator_password.modified)) {
+    if (password !== null) password.modified = false;
+    if (spectator_password !== null) spectator_password.modified = false;
+
+    let need = 0;
+
+    if (cvarStr(password) && Q_stricmp(cvarStr(password), "none") !== 0) need |= 1;
+    if (cvarStr(spectator_password) && Q_stricmp(cvarStr(spectator_password), "none") !== 0) need |= 2;
+
+    gi.cvar_set("needpass", Com_sprintf("%d", need));
+  }
+}
+
+/*
+=================
 CheckDMRules
 =================
 */
@@ -319,6 +342,9 @@ export function G_RunFrame(): void {
 
   // see if it is time to end a deathmatch
   CheckDMRules();
+
+  // see if needpass needs updated
+  CheckNeedPass();
 
   // build the playerstate_t structures for all players
   ClientEndServerFrames();

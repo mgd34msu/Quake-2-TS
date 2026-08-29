@@ -54,6 +54,8 @@ import {
   RF_SHELL_DOUBLE,
   RF_SHELL_HALF_DAM,
   CS_PLAYERSKINS,
+  CS_MODELS,
+  Q_strcasecmp,
 } from "../shared/q_shared";
 import type { ModelS } from "./ref";
 import { EntityT } from "./ref";
@@ -114,6 +116,7 @@ import { CL_AddTEnts } from "./cl_tent";
 import { CL_CheckPredictionError } from "./cl_pred";
 import { V_AddEntity, V_AddLight } from "./cl_view";
 import { SCR_EndLoadingPlaque } from "./cl_scrn";
+import { Developer_searchpath } from "../qcommon/files";
 
 // qcommon.h's PS_* delta-playerstate flags. Absent from src/qcommon/qcommon.ts
 // (see sv_ents.ts's identical note); duplicated locally here for the same
@@ -878,6 +881,33 @@ function CL_AddPacketEntities(frame: FrameT): void {
 
     // color shells generate a seperate entity for the main model
     if (effects & EF_COLOR_SHELL) {
+      // PMM - at this point, all of the shells have been handled
+      // if we're in the rogue pack, set up the custom mixing, otherwise just
+      // keep going
+      // all of the solo colors are fine.  we need to catch any of the combinations that look bad
+      // (double & half) and turn them into the appropriate color, and make double/quad something special
+      if (renderfx & RF_SHELL_HALF_DAM) {
+        if (Developer_searchpath(2) === 2) {
+          // ditch the half damage shell if any of red, blue, or double are on
+          if (renderfx & (RF_SHELL_RED | RF_SHELL_BLUE | RF_SHELL_DOUBLE)) renderfx &= ~RF_SHELL_HALF_DAM;
+        }
+      }
+
+      if (renderfx & RF_SHELL_DOUBLE) {
+        if (Developer_searchpath(2) === 2) {
+          // lose the yellow shell if we have a red, blue, or green shell
+          if (renderfx & (RF_SHELL_RED | RF_SHELL_BLUE | RF_SHELL_GREEN)) renderfx &= ~RF_SHELL_DOUBLE;
+          // if we have a red shell, turn it to purple by adding blue
+          if (renderfx & RF_SHELL_RED) renderfx |= RF_SHELL_BLUE;
+          // if we have a blue shell (and not a red shell), turn it to cyan by adding green
+          else if (renderfx & RF_SHELL_BLUE) {
+            // go to green if it's on already, otherwise do cyan (flash green)
+            if (renderfx & RF_SHELL_GREEN) renderfx &= ~RF_SHELL_BLUE;
+            else renderfx |= RF_SHELL_GREEN;
+          }
+        }
+      }
+      // pmm
       ent.flags = renderfx | RF_TRANSLUCENT;
       ent.alpha = 0.3;
       V_AddEntity(ent);
@@ -900,14 +930,18 @@ function CL_AddPacketEntities(frame: FrameT): void {
           if (i !== 0) ent.model = ci.weaponmodel[0];
           if (!ent.model) ent.model = cl.baseclientinfo.weaponmodel[0];
         }
-      } else if (s1.modelindex2 & 0x80) {
-        // PGM - hack to allow translucent linked models (defender sphere's shell)
-        //   set the high bit 0x80 on modelindex2 to enable translucency
-        ent.model = cl.model_draw[s1.modelindex2 & 0x7f];
+      } else {
+        ent.model = cl.model_draw[s1.modelindex2];
+      }
+
+      // PMM - check for the defender sphere shell .. make it translucent
+      // replaces the previous version which used the high bit on modelindex2 to determine transparency
+      if (Q_strcasecmp(cl.configstrings[CS_MODELS + s1.modelindex2] ?? "", "models/items/shell/tris.md2") === 0) {
         ent.alpha = 0.32;
         ent.flags = RF_TRANSLUCENT;
-      } //PGM
-      else ent.model = cl.model_draw[s1.modelindex2];
+      }
+      // pmm
+
       V_AddEntity(ent);
 
       //PGM - make sure these get reset.

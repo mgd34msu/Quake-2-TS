@@ -1006,7 +1006,11 @@ function R_BuildPolygonFromSurface(fa: MsurfaceT): void {
     VectorSubtract(vec3_origin, r_polydesc.vpn, r_polydesc.vpn);
   }
 
-  if ((fa.texinfo.flags & SURF_WARP) !== 0) {
+  // PGM 09/16/98 -- flowing (scrolling) surfaces take the same raw-image
+  // path as warped ones; routing them through D_CacheSurface's lightmap
+  // cache instead produced the "D_SCAlloc: bad cache width" crash on
+  // flowing transparent surfaces (3.20/3.21 fix).
+  if ((fa.texinfo.flags & (SURF_WARP | SURF_FLOWING)) !== 0) {
     if (fa.texinfo.image === null) return;
     r_polydesc.pixels = fa.texinfo.image.pixels[0];
     r_polydesc.pixel_width = fa.texinfo.image.width;

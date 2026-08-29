@@ -48,7 +48,7 @@ confined to one model.
 
 import { AngleVectors, DotProduct, R_ConcatTransforms, VectorCopy, VectorInverse, VectorSubtract, type Mat3x4, type Vec3, vec3 } from "../shared/math";
 import { PRINT_ALL, RF_DEPTHHACK, RF_FULLBRIGHT, RF_GLOW, RF_IR_VISIBLE, RF_MINLIGHT, RF_SHELL_BLUE, RF_SHELL_DOUBLE, RF_SHELL_GREEN, RF_SHELL_HALF_DAM, RF_SHELL_RED, RF_TRANSLUCENT, RF_WEAPONMODEL, RDF_IRGOGGLES } from "../shared/q_shared";
-import { POWERSUIT_SCALE, SHELL_BLUE_COLOR, SHELL_CYAN_COLOR, SHELL_DOUBLE_COLOR, SHELL_GREEN_COLOR, SHELL_HALF_DAM_COLOR, SHELL_RB_COLOR, SHELL_RED_COLOR, SHELL_WHITE_COLOR, type EntityT } from "../client/ref";
+import { POWERSUIT_SCALE, SHELL_BG_COLOR, SHELL_BLUE_COLOR, SHELL_DOUBLE_COLOR, SHELL_GREEN_COLOR, SHELL_HALF_DAM_COLOR, SHELL_RB_COLOR, SHELL_RED_COLOR, SHELL_RG_COLOR, SHELL_WHITE_COLOR, type EntityT } from "../client/ref";
 import { bytedirs } from "../qcommon/anorms";
 import { R_LightPoint } from "./r_light";
 import { R_AliasClipTriangle } from "./r_aclip";
@@ -691,22 +691,18 @@ export function R_AliasDrawModel(): void {
   if (currententity.flags & shellFlags) {
     const color = currententity.flags & shellFlags;
 
-    if (color & RF_SHELL_RED) {
-      if (color & RF_SHELL_BLUE && color & RF_SHELL_GREEN) R_SetAliasBlendColor(SHELL_WHITE_COLOR);
-      else if (color & (RF_SHELL_BLUE | RF_SHELL_DOUBLE)) R_SetAliasBlendColor(SHELL_RB_COLOR);
-      else R_SetAliasBlendColor(SHELL_RED_COLOR);
-    } else if (color & RF_SHELL_BLUE) {
-      if (color & RF_SHELL_DOUBLE) R_SetAliasBlendColor(SHELL_CYAN_COLOR);
-      else R_SetAliasBlendColor(SHELL_BLUE_COLOR);
-    } else if (color & RF_SHELL_DOUBLE) {
-      R_SetAliasBlendColor(SHELL_DOUBLE_COLOR);
-    } else if (color & RF_SHELL_HALF_DAM) {
-      R_SetAliasBlendColor(SHELL_HALF_DAM_COLOR);
-    } else if (color & RF_SHELL_GREEN) {
-      R_SetAliasBlendColor(SHELL_GREEN_COLOR);
-    } else {
-      R_SetAliasBlendColor(SHELL_WHITE_COLOR);
-    }
+    // PMM - reordered, new shells after old shells (so they get overriden)
+    if (color === RF_SHELL_RED) R_SetAliasBlendColor(SHELL_RED_COLOR);
+    else if (color === RF_SHELL_GREEN) R_SetAliasBlendColor(SHELL_GREEN_COLOR);
+    else if (color === RF_SHELL_BLUE) R_SetAliasBlendColor(SHELL_BLUE_COLOR);
+    else if (color === (RF_SHELL_RED | RF_SHELL_GREEN)) R_SetAliasBlendColor(SHELL_RG_COLOR);
+    else if (color === (RF_SHELL_RED | RF_SHELL_BLUE)) R_SetAliasBlendColor(SHELL_RB_COLOR);
+    else if (color === (RF_SHELL_BLUE | RF_SHELL_GREEN)) R_SetAliasBlendColor(SHELL_BG_COLOR);
+    // PMM - added this .. it's yellowish
+    else if (color === RF_SHELL_DOUBLE) R_SetAliasBlendColor(SHELL_DOUBLE_COLOR);
+    else if (color === RF_SHELL_HALF_DAM) R_SetAliasBlendColor(SHELL_HALF_DAM_COLOR);
+    // pmm
+    else R_SetAliasBlendColor(SHELL_WHITE_COLOR);
 
     if (currententity.alpha > 0.33) R_SetDrawSpansFn(R_PolysetDrawSpansConstant8_66);
     else R_SetDrawSpansFn(R_PolysetDrawSpansConstant8_33);

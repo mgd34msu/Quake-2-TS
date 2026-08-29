@@ -1261,6 +1261,10 @@ function weapon_bfg_fire(ent: EdictT): void {
 
   const damage_radius = 1000;
   let damage = cvarNum(gameCvars.deathmatch) ? 200 : 500;
+  // C declares `start` at the top of the function and reads it uninitialized
+  // on the early-return branch below (a real bug carried through 3.20/3.21);
+  // zero-initialized here since there is no uninitialized stack memory to read.
+  const start = vec3();
 
   if (client.ps.gunframe === 9) {
     // send muzzle flash
@@ -1271,7 +1275,7 @@ function weapon_bfg_fire(ent: EdictT): void {
 
     client.ps.gunframe++;
 
-    PlayerNoise(ent, ent.s.origin, PNOISE_WEAPON);
+    PlayerNoise(ent, start, PNOISE_WEAPON);
     return;
   }
 
@@ -1296,7 +1300,6 @@ function weapon_bfg_fire(ent: EdictT): void {
   client.v_dmg_time = level.time + DAMAGE_TIME;
 
   const offset = vec3(8, 8, ent.viewheight - 8);
-  const start = vec3();
   P_ProjectSource(client, ent.s.origin, offset, forward, right, start);
   fire_bfg(ent, start, forward, damage, 400, damage_radius);
 

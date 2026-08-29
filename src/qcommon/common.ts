@@ -186,7 +186,7 @@ export function Com_Printf(fmt: string, ...args: Array<string | number>): void {
   if (logfile_active && logfile_active.value) {
     if (logfile === null) {
       const name = `${FS_Gamedir()}/qconsole.log`;
-      logfile = openSync(name, "w");
+      logfile = openSync(name, logfile_active.value > 2 ? "a" : "w");
     }
     if (logfile !== null) {
       writeSync(logfile, msg);

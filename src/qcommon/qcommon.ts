@@ -11,7 +11,7 @@
 
 export { PRINT_ALL, PRINT_DEVELOPER } from "../shared/q_shared";
 
-export const VERSION = 3.19;
+export const VERSION = 3.21;
 export const BASEDIRNAME = "baseq2";
 
 // #ifdef WIN32/__linux__/... BUILDSTRING/CPUSTRING selection dropped; this

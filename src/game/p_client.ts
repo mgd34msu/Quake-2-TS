@@ -1398,11 +1398,15 @@ export function ClientBeginDeathmatch(ent: EdictT): void {
   // locate ent at a spawn point
   PutClientInServer(ent);
 
-  // send effect
-  gi.WriteByte(svc_muzzleflash);
-  gi.WriteShort(EDICT_NUM(ent));
-  gi.WriteByte(MZ_LOGIN);
-  gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
+  if (level.intermissiontime !== 0) {
+    MoveClientToIntermission(ent);
+  } else {
+    // send effect
+    gi.WriteByte(svc_muzzleflash);
+    gi.WriteShort(EDICT_NUM(ent));
+    gi.WriteByte(MZ_LOGIN);
+    gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
+  }
 
   if (ent.client !== null) {
     gi.bprintf(PRINT_HIGH, `${ent.client.pers.netname} entered the game\n`);
@@ -1601,6 +1605,7 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
     gi.dprintf(`${client.pers.netname} connected\n`);
   }
 
+  ent.svflags = 0; // make sure we start with known default
   client.pers.connected = true;
   return { allowed: true, userinfo };
 }
