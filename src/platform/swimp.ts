@@ -16,7 +16,7 @@ the rendered frame and there is nothing to present it to.
 */
 
 import { RserrT, ri, sw_state, vid } from "../ref_soft/r_local";
-import { SDLVID_Active, SDLVID_Init, SDLVID_Present, SDLVID_Shutdown, SDL_AppActivate } from "./sdl";
+import { SDL_BackendEnabled, SDLVID_Active, SDLVID_Init, SDLVID_Present, SDLVID_Shutdown, SDL_AppActivate } from "./sdl";
 
 // The real linux/rw_x11.c SWimp_SetMode ends by calling
 // R_GammaCorrectAndSetPalette(d_8to24table) to push the mode's palette to
@@ -48,7 +48,15 @@ export function SWimp_SetMode(width: number, height: number, mode: number, fulls
   // this the client-side viddef stays 0x0 and SCR_CalcVrect renders nothing.
   ri.Vid_NewWindow(info.width, info.height);
 
-  SDLVID_Init(info.width, info.height, fullscreen);
+  // rw_x11.c: "if ( !SWimp_InitGraphics( false ) ) return rserr_invalid_mode;"
+  // -- a failed window/renderer/texture creation must not report success, or
+  // the engine renders into a buffer nothing will ever present. When the SDL
+  // backend is not armed (dedicated server, headless tests) a false return
+  // is the designed degradation, not a failure: vid.buffer IS the frame.
+  if (!SDLVID_Init(info.width, info.height, fullscreen) && SDL_BackendEnabled()) {
+    ri.Con_Printf(0, " SDL window/renderer creation failed\n");
+    return { pwidth: info.width, pheight: info.height, rserr: RserrT.rserr_invalid_mode };
+  }
 
   return { pwidth: info.width, pheight: info.height, rserr: RserrT.rserr_ok };
 }

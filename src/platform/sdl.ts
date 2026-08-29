@@ -27,7 +27,7 @@ freezes its public struct layouts.
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
 import { Cvar_Get, Cvar_VariableValue } from "../qcommon/cvar";
 import { Cmd_AddCommand } from "../qcommon/cmd";
-import { Com_Printf } from "../qcommon/common";
+import { Com_DPrintf, Com_Printf } from "../qcommon/common";
 import type { CvarT, UsercmdT } from "../shared/q_shared";
 import { CVAR_ARCHIVE, PITCH, YAW } from "../shared/q_shared";
 import { cl, cls, in_strafe, KeydestT } from "../client/client";
@@ -121,6 +121,12 @@ const SDL_WINDOW_FULLSCREEN = 0x00000001;
 // eventually flags "not responding". Desktop fullscreen composites at the
 // native resolution and RenderSetLogicalSize scales the frame.
 const SDL_WINDOW_FULLSCREEN_DESKTOP = 0x00001001;
+// window usable with an OpenGL context -- glimp.ts's SDLGL_CreateWindow variant
+const SDL_WINDOW_OPENGL = 0x00000002;
+
+// SDL_GLattr (SDL_video.h): enum order matters, these are index values, not bitflags.
+const SDL_GL_DOUBLEBUFFER = 5;
+const SDL_GL_DEPTH_SIZE = 6;
 
 const SDL_RENDERER_SOFTWARE = 0x00000001;
 const SDL_RENDERER_ACCELERATED = 0x00000002;
@@ -196,6 +202,13 @@ const symbols = {
   SDL_CreateTexture: { args: ["ptr", "u32", "i32", "i32", "i32"], returns: "ptr" },
   SDL_DestroyTexture: { args: ["ptr"], returns: "void" },
   SDL_UpdateTexture: { args: ["ptr", "ptr", "ptr", "i32"], returns: "i32" },
+
+  SDL_GL_SetAttribute: { args: ["i32", "i32"], returns: "i32" },
+  SDL_GL_CreateContext: { args: ["ptr"], returns: "ptr" },
+  SDL_GL_DeleteContext: { args: ["ptr"], returns: "void" },
+  SDL_GL_SwapWindow: { args: ["ptr"], returns: "void" },
+  SDL_GL_GetProcAddress: { args: ["cstring"], returns: "ptr" },
+  SDL_GL_SetSwapInterval: { args: ["i32"], returns: "i32" },
 
   SDL_PollEvent: { args: ["ptr"], returns: "i32" },
   SDL_PumpEvents: { args: [], returns: "void" },
@@ -405,13 +418,21 @@ export function SDLVID_Shutdown(): void {
   texHeight = 0;
   rgba = new Uint8Array(0);
   IN_DeactivateMouse();
-  quitSubsystem(l, SDL_INIT_VIDEO);
+  // deliberately NOT quitSubsystem(SDL_INIT_VIDEO): the subsystem stays
+  // armed for the life of the process. Tearing it down here cleared the
+  // `subsystems` VIDEO bit on every runtime mode change (SDLVID_Init calls
+  // this after re-arming), which permanently disabled SDL_PumpInput -- dead
+  // keyboard/mouse and a compositor "not responding" verdict. SDL_ShutdownAll
+  // owns the final teardown.
 }
 
 export function SDLVID_Present(buffer: Uint8Array, rowbytes: number, width: number, height: number, palette: Uint8Array): void {
   const l = lib();
   if (!l || !texture || !renderer) return;
-  if (width !== texWidth || height !== texHeight) return;
+  if (width !== texWidth || height !== texHeight) {
+    Com_DPrintf("SDLVID_Present: %ix%i frame vs %ix%i texture -- dropped\n", width, height, texWidth, texHeight);
+    return;
+  }
 
   SDLVID_ExpandFrame(buffer, rowbytes, width, height, palette, rgba);
 
@@ -426,6 +447,87 @@ export function SDLVID_SetWindowTitle(title: string): void {
   const l = lib();
   if (!l || !window) return;
   l.symbols.SDL_SetWindowTitle(window, cstr(title));
+}
+
+//=============================================================================
+// GL -- win32/glw_imp.c's GLimp_Init/SetMode/EndFrame surface (see
+// src/platform/glimp.ts, this section's only caller): an SDL_GLContext bound
+// to the same module-level `window` the software path's SDLVID_Init uses.
+// This port only ever runs one refresh at a time, never software and GL
+// together, so sharing that one handle between the two paths is safe.
+
+let glContext: Pointer | bigint | null = null;
+
+export function SDLGL_CreateWindow(width: number, height: number, fullscreen: boolean): boolean {
+  const l = lib();
+  if (!l) return false;
+  if (!initSubsystem(l, SDL_INIT_VIDEO)) return false;
+
+  if (glContext) {
+    l.symbols.SDL_GL_DeleteContext(glContext);
+    glContext = null;
+  }
+  SDLVID_Shutdown(); // destroy any previous window (software or GL) first, like GLimp_SetMode's GLimp_Shutdown() call in the C original
+
+  l.symbols.SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  // 24, not the win32 PFD's 32 -- no per-OS branch here (PORTING.md's
+  // portable-path rule), and 24-bit depth is what every GL driver this port
+  // actually runs against offers; SDL_GL_SetAttribute is a request, not a
+  // guarantee, so this only steers picking a close-enough visual/config.
+  l.symbols.SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+  const flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+  window = l.symbols.SDL_CreateWindow(cstr("Quake 2"), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+  if (!window) {
+    Com_Printf("SDL: SDL_CreateWindow failed: %s\n", sdlError(l));
+    return false;
+  }
+  return true;
+}
+
+export function SDLGL_CreateContext(): boolean {
+  const l = lib();
+  if (!l || !window) return false;
+
+  glContext = l.symbols.SDL_GL_CreateContext(window);
+  if (!glContext) {
+    Com_Printf("SDL: SDL_GL_CreateContext failed: %s\n", sdlError(l));
+    return false;
+  }
+  return true;
+}
+
+export function SDLGL_SwapWindow(): void {
+  const l = lib();
+  if (!l || !window) return;
+  l.symbols.SDL_GL_SwapWindow(window);
+}
+
+export function SDLGL_SetSwapInterval(interval: number): void {
+  const l = lib();
+  if (!l) return;
+  l.symbols.SDL_GL_SetSwapInterval(interval);
+}
+
+// linux/qgl_linux.c resolves *_EXT/*_SGIS entries through glXGetProcAddress
+// once a context is current; SDL_GL_GetProcAddress is this port's portable
+// equivalent (see qgl.ts's loadQGLFromSystem, the only caller). Returns the
+// raw FFIType.ptr result rather than narrowing bigint away the way
+// qgl.ts's qglGetString does for a cstring result -- linkSymbols' `ptr`
+// field accepts `Pointer | bigint` directly, so no narrowing is needed here.
+export function SDLGL_GetProcAddress(name: string): Pointer | bigint | null {
+  const l = lib();
+  if (!l) return null;
+  return l.symbols.SDL_GL_GetProcAddress(cstr(name));
+}
+
+export function SDLGL_Shutdown(): void {
+  const l = lib();
+  if (l && glContext) {
+    l.symbols.SDL_GL_DeleteContext(glContext);
+    glContext = null;
+  }
+  SDLVID_Shutdown();
 }
 
 //=============================================================================

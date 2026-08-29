@@ -26,7 +26,7 @@ one direct-call test.
 
 import { describe, test, expect, beforeEach } from "bun:test";
 
-import { SetRefImports, gltextures, ImageT, ImagetypeT, SetNumGltextures, gl_state, d_8to24table } from "../src/ref_gl/gl_local";
+import { glCvars, SetRefImports, gltextures, ImageT, ImagetypeT, SetNumGltextures, gl_state, d_8to24table } from "../src/ref_gl/gl_local";
 import type { RefImports } from "../src/client/ref";
 import { CvarT } from "../src/shared/q_shared";
 import { QGLRecording } from "../src/ref_gl/qgl";
@@ -147,6 +147,11 @@ beforeEach(() => {
   gl_state.currenttextures[0] = 0;
   gl_state.currenttextures[1] = 0;
   gl_state.currenttmu = 0;
+  // rule 13: GL_Upload8's qglTexImage2D-vs-qglColorTableEXT choice reads the
+  // shared gl_ext_palettedtexture cvar, which another suite's real R_Init
+  // (test/glimp.test.ts) may have left enabled in this process. Pin it off:
+  // this suite's assertions are written against the RGBA-expansion path.
+  if (glCvars.gl_ext_palettedtexture) glCvars.gl_ext_palettedtexture.value = 0;
 });
 
 describe("GL_Bind", () => {

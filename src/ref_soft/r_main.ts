@@ -906,6 +906,12 @@ export function R_BeginFrame(camera_separation: number): void {
       if (rCvars.vid_fullscreen) rCvars.vid_fullscreen.modified = false;
       if (rCvars.sw_mode) rCvars.sw_mode.modified = false;
     } else if (err === RserrT.rserr_invalid_mode) {
+      // clear the flags BEFORE retrying prev_mode: Cvar_SetValue re-marks
+      // sw_mode modified only when the value actually changes, so a retry
+      // happens for a different prev_mode while prev_mode === modeVal (the
+      // C original's latent forever-loop) exits with the failure reported.
+      if (rCvars.sw_mode) rCvars.sw_mode.modified = false;
+      if (rCvars.vid_fullscreen) rCvars.vid_fullscreen.modified = false;
       ri.Cvar_SetValue("sw_mode", sw_state.prev_mode);
       ri.Con_Printf(PRINT_ALL, "ref_soft::R_BeginFrame() - could not set mode\n");
     } else if (err === RserrT.rserr_invalid_fullscreen) {

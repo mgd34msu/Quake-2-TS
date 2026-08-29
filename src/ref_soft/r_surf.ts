@@ -526,7 +526,11 @@ export function D_SCAlloc(width: number, size: number): SurfcacheT {
   if (width > 0) newNode.height = Math.trunc((allocSize - SURFCACHE_HEADER_SIZE) / width);
 
   newNode.owner = null; // should be set properly after return
-  newNode.data = new Uint8Array(width > 0 ? width * newNode.height : size);
+  // C hands back a pointer into the sc_base arena and allocates nothing;
+  // minting a fresh buffer on every (re)allocation kept the GC hot under
+  // cache thrash at large modes. Reuse the block's buffer when it fits.
+  const wantBytes = width > 0 ? width * newNode.height : size;
+  if (newNode.data.length !== wantBytes) newNode.data = new Uint8Array(wantBytes);
 
   if (d_roverwrapped) {
     if (wrapped_this_time || (sc_rover !== null && d_initial_rover !== null && positionOf(sc_rover) >= positionOf(d_initial_rover))) {
