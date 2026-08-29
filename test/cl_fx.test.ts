@@ -281,11 +281,8 @@ describe("CL_ParseTEnt(TE_EXPLOSION1)", () => {
     // S_StartSound (snd_dma.ts) is still a PendingPort stub, and
     // CL_ParseTEnt's TE_EXPLOSION1 branch calls it after the explosion is
     // already allocated and populated -- so the expected throw happens
-    // strictly after the state we're asserting on is committed. Per this
-    // unit's brief ("keep the C call and let tests use paths that don't
-    // reach them OR record via a fake re"), the throw itself is expected
-    // and asserted, not worked around.
-    expect(() => CL_ParseTEnt()).toThrow();
+    // snd_dma landed real; the parse path completes now.
+    expect(() => CL_ParseTEnt()).not.toThrow();
 
     const ex = cl_explosions.find((e) => e.type === ExptypeT.ex_poly && e.ent.origin[0] === 64 && e.ent.origin[1] === -32 && e.ent.origin[2] === 128);
     expect(ex).toBeDefined();

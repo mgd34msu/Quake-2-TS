@@ -188,11 +188,14 @@ describe("CL_ParseServerMessage -- svc_* dispatch", () => {
     // and may change as siblings land.
     MSG_WriteByte(net_message, SvcOpsT.svc_serverdata);
     MSG_BeginReading(net_message);
-    expect(() => CL_ParseServerMessage()).toThrow(PendingPort);
+    // the sound path is real now; the truncated message dies on the C's own
+    // protocol-version check instead (ERR_DROP -> ComError)
+    expect(() => CL_ParseServerMessage()).toThrow(/version/);
 
     resetNetMessage();
     MSG_BeginReading(net_message);
-    expect(() => CL_ParseServerData()).toThrow(PendingPort);
+    // same truncated-message path: dies on the protocol-version check
+    expect(() => CL_ParseServerData()).toThrow(/version/);
   });
 });
 

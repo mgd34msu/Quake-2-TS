@@ -40,13 +40,6 @@ import {
 } from "../src/client/snd_loc";
 import { MenuframeworkS, MenuCommonS, MenufieldS, MenusliderS, MenulistS, MenuactionS, MenuseparatorS } from "../src/client/qmenu";
 
-import { SCR_Init, SCR_UpdateScreen } from "../src/client/cl_scrn";
-import { CL_ParseInventory } from "../src/client/cl_inv";
-import { Key_Event } from "../src/client/keys_impl";
-import { Con_Init } from "../src/client/console_impl";
-import { Menu_Draw } from "../src/client/qmenu_impl";
-import { S_Init } from "../src/client/snd_dma";
-import { M_Init } from "../src/client/menu";
 
 // ---- struct construction ------------------------------------------------
 
@@ -247,43 +240,10 @@ describe("keys.ts K_* constants match client/keys.h", () => {
 
 // ---- pending-stub coverage -------------------------------------------------
 
-describe("client .c pending stubs throw PendingPort with the C source name", () => {
-  test("cl_scrn.ts: SCR_Init", () => {
-    expect(() => SCR_Init()).toThrow(PendingPort);
-    try {
-      SCR_Init();
-      throw new Error("expected PendingPort");
-    } catch (e) {
-      expect(e).toBeInstanceOf(PendingPort);
-      expect((e as Error).message).toContain("SCR_Init");
-    }
-  });
-
-  test("cl_scrn.ts: SCR_UpdateScreen", () => {
-    expect(() => SCR_UpdateScreen()).toThrow(/SCR_UpdateScreen/);
-  });
-
-  test("cl_inv.ts: CL_ParseInventory", () => {
-    expect(() => CL_ParseInventory()).toThrow(/CL_ParseInventory/);
-  });
-
-  test("keys_impl.ts: Key_Event", () => {
-    expect(() => Key_Event(K_ESCAPE, true, 0)).toThrow(/Key_Event/);
-  });
-
-  test("console_impl.ts: Con_Init", () => {
-    expect(() => Con_Init()).toThrow(/Con_Init/);
-  });
-
-  test("qmenu_impl.ts: Menu_Draw", () => {
-    expect(() => Menu_Draw(new MenuframeworkS())).toThrow(/Menu_Draw/);
-  });
-
-  test("snd_dma.ts: S_Init", () => {
-    expect(() => S_Init()).toThrow(/S_Init/);
-  });
-
-  test("menu.ts: M_Init", () => {
-    expect(() => M_Init()).toThrow(/M_Init/);
+describe("remaining pending stubs (ref_soft track) throw PendingPort with the C source name", () => {
+  test("ref_soft r_main.ts: R_Init", async () => {
+    const { R_Init } = await import("../src/ref_soft/r_main");
+    expect(() => R_Init(null, null)).toThrow(PendingPort);
+    expect(() => R_Init(null, null)).toThrow(/R_Init/);
   });
 });

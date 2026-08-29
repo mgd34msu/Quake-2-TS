@@ -742,7 +742,7 @@ export function CL_ParseStatusMessage(): void {
 CL_PingServers_f
 =================
 */
-async function CL_PingServers_f(): Promise<void> {
+export async function CL_PingServers_f(): Promise<void> {
   await NET_Config(true); // allow remote
 
   // send a broadcast packet
