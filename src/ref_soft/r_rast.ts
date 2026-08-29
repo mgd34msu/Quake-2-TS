@@ -1,31 +1,799 @@
 /*
 Copyright (C) 1997-2001 Id Software, Inc.
-Ported from ref_soft/r_rast.c (GNU GPL v2 or later) -- pending. Every
-function r_local.h attributes to r_rast.c throws PendingPort until the real
-module lands. `R_EmitSkyBox`/`R_EmitCachedEdge` are static internal helpers
-(not declared in r_local.h) and are not stubbed individually.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+
+Ported from ref_soft/r_rast.c (GNU GPL v2 or later). `#if !id386` is the only
+build of R_EmitEdge/R_ClipEdge that ever existed as portable C (the `#else`
+half of that guard is x86 `__declspec(naked)` asm and is dropped per
+PORTING.md's "#ifdef id386 ... take the portable path"). `R_EmitSkyBox`/
+`R_EmitCachedEdge` are static internal helpers (not declared in r_local.h)
+and stay unexported, matching this file's own former header comment.
+
+Cross-module mutable state deviation (reported for the coordinator, same
+shape as r_model.ts's own reported deviation for `r_worldmodel`): r_local.h
+declares `surface_p`/`edge_p`/`r_outofsurfaces`/`r_outofedges`/
+`r_alpha_surfaces`/`c_faceclip` as globals shared by every r_*.c translation
+unit, and r_local.ts already carries most of them as bare `export let`s.
+An ES module cannot reassign another module's imported `let` binding
+(tsc TS2632: "Cannot assign to 'x' because it is an import"), and this file's
+R_RenderFace/R_RenderBmodelFace/R_EmitEdge/R_EmitCachedEdge need to
+increment/reassign several of these every call. r_local.ts exports no
+setters for them (the one precedent, `SetRefImports`, only covers `ri`), and
+adding setters there is out of this brief's SCOPE. Ported as local module
+state here instead (including `c_faceclip`, which r_local.ts never declared
+at all). Nothing outside this file currently reads r_local.ts's copies of
+these fields, so nothing observes the staleness yet; flagged as a follow-up
+for the coordinator to add real setters to r_local.ts (or move the
+declarations here) once other ref_soft units need to observe them too.
+
+`r_currentkey`/`r_currentbkey` (r_local.h externs, real homes r_edge.c and
+r_bsp.c respectively) have the same problem but are also read/written from
+r_bsp.ts, so a bare local `let` here would hit the identical TS2632 wall the
+other direction. Ported as the `rKey` holder object below instead --
+property mutation on a shared object reference crosses ES module boundaries
+fine even though rebinding a `let` does not.
+
+`currentmodel`/`currententity`/`r_pcurrentvertbase` (also r_local.h externs)
+are written by R_RenderWorld in r_bsp.ts and read here; r_bsp.ts carries the
+same kind of local shadow for the same reason (see that file's header
+comment) and this file reads them lazily via Bun's synchronous `require()`
+per PORTING.md's import-cycle rule, since r_bsp.ts already statically
+imports R_RenderFace/R_RenderBmodelFace/rKey from this file and a static
+import the other way back would close a cycle.
+
+`loadmodel` (r_model.c's own global, read by R_InitSkyBox) is not exported
+by r_model.ts (that module shadows it as an unexported local for the same
+TS2632 reason -- see its own header comment), so R_InitSkyBox has nothing
+real to attach the skybox surfaces to. Ported against a local placeholder of
+the same shape; reported as a blocking integration gap for the coordinator
+(r_model.ts needs to export `loadmodel`, or a setter, before R_InitSkyBox
+can do anything useful when Mod_LoadBrushModel calls it).
 */
 
-import { PendingPort } from "../qcommon/pending";
-import type { BedgeT, ClipplaneT } from "./r_local";
-import type { MsurfaceT, MvertexT } from "./r_model";
+import { type Vec3, vec3, DotProduct, VectorSubtract, VectorCopy } from "../shared/math";
+import { CplaneT, ERR_DROP, SURF_SKY, SURF_TRANS33, SURF_TRANS66 } from "../shared/q_shared";
+import { MAX_MAP_EDGES, MAX_MAP_FACES, MAX_MAP_VERTS } from "../qcommon/qfiles";
+import {
+  type BedgeT,
+  type ClipplaneT,
+  r_refdef,
+  vpn,
+  vright,
+  vup,
+  modelorg,
+  r_origin,
+  view_clipplanes,
+  newedges,
+  removeedges,
+  r_edges,
+  edge_max,
+  surfaces,
+  surf_max,
+  r_framecount,
+  insubmodel,
+  r_clipflags,
+  NEAR_CLIP,
+  xscale,
+  yscale,
+  xcenter,
+  ycenter,
+  xscaleinv,
+  yscaleinv,
+  ri,
+} from "./r_local";
+import { MedgeT, MsurfaceT, MtexinfoT, type MplaneT, type ModelT, MvertexT, SURF_DRAWSKYBOX } from "./r_model";
+import type * as BspModule from "./r_bsp";
 
+// r_bsp.ts <-> r_rast.ts import-cycle rule: r_bsp.ts statically imports
+// R_RenderFace/R_RenderBmodelFace/rKey from here, so this file resolves the
+// reverse edge (reading r_bsp.ts's currentmodel/currententity/
+// r_pcurrentvertbase shadow) lazily instead of with a static import.
+function bspMod(): typeof BspModule {
+  return require("./r_bsp");
+}
+
+//===========================================================================
+// r_rast.c's own file-scope statics (not declared in r_local.h -- see this
+// file's header comment for the ones that *are* r_local.h externs).
+
+let cacheoffset = 0;
+
+export let c_faceclip = 0;
+export let r_polycount = 0;
+
+export let surface_p = 0;
+export let edge_p = 0;
+
+let r_outofsurfaces = 0;
+let r_outofedges = 0;
+
+export let r_alpha_surfaces: MsurfaceT | null = null;
+
+// r_currentkey's real home is r_edge.c, r_currentbkey's is r_bsp.c; neither
+// is exported by r_local.ts today (see header comment) -- shared here as a
+// mutable holder object so r_bsp.ts can read/write the same counters.
+export const rKey = {
+  current: 0, // r_currentkey
+  currentB: 0, // r_currentbkey
+};
+
+let r_pedge: MedgeT | null = null;
+
+let r_leftclipped = false;
+let r_rightclipped = false;
+let makeleftedge = false;
+let makerightedge = false;
+let r_nearzionly = false;
+let r_lastvertvalid = false;
+let r_emitted = 0;
+let r_nearzi = 0;
+let r_u1 = 0;
+let r_v1 = 0;
+let r_lzi1 = 0;
+let r_ceilv1 = 0;
+
+// exposed purely for test introspection (R_ClipEdge's hand-computed
+// intersection point, per this unit's brief).
+export let r_leftenter = new MvertexT();
+export let r_leftexit = new MvertexT();
+export let r_rightenter = new MvertexT();
+export let r_rightexit = new MvertexT();
+
+// !!! if these are changed, they must be changed in asm_draw.h too !!!
+const FULLY_CLIPPED_CACHED = 0x80000000;
+const FRAMECOUNT_MASK = 0x7fffffff;
+
+function TransformVector(inV: Vec3, out: Vec3): void {
+  out[0] = DotProduct(inV, vright);
+  out[1] = DotProduct(inV, vup);
+  out[2] = DotProduct(inV, vpn);
+}
+
+//===========================================================================
+// sky box (r_rast.c's own file-scope statics)
+
+const skybox_planes = [2, -128, 0, -128, 2, 128, 1, 128, 0, 128, 1, -128];
+// ported verbatim: 1-based, signed-for-winding-direction indices
+const box_surfedges = [1, 2, 3, 4, -1, 5, 6, 7, 8, 9, -6, 10, -2, -7, -9, 11, 12, -3, -11, -8, -12, -10, -5, -4];
+const box_edges = [1, 2, 2, 3, 3, 4, 4, 1, 1, 5, 5, 6, 6, 2, 7, 8, 8, 6, 5, 7, 8, 3, 7, 4];
+const box_faces = [0, 0, 2, 2, 2, 0];
+const box_vecs: [Vec3, Vec3][] = [
+  [vec3(0, -1, 0), vec3(-1, 0, 0)],
+  [vec3(0, 1, 0), vec3(0, 0, -1)],
+  [vec3(0, -1, 0), vec3(1, 0, 0)],
+  [vec3(1, 0, 0), vec3(0, 0, -1)],
+  [vec3(0, -1, 0), vec3(0, 0, -1)],
+  [vec3(-1, 0, 0), vec3(0, 0, -1)],
+];
+const box_verts: Vec3[] = [
+  vec3(-1, -1, -1),
+  vec3(-1, 1, -1),
+  vec3(1, 1, -1),
+  vec3(1, -1, -1),
+  vec3(-1, -1, 1),
+  vec3(-1, 1, 1),
+  vec3(1, -1, 1),
+  vec3(1, 1, 1),
+];
+
+// see this file's header comment: r_model.ts's real `loadmodel` is not
+// exported, so this is an inert placeholder R_InitSkyBox operates against.
+let loadmodel: ModelT | null = null;
+
+let r_skyframe = -1;
+let r_skyfaces: MsurfaceT[] = [];
+const r_skyplanes: MplaneT[] = [new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT(), new CplaneT()];
+const r_skytexinfo: MtexinfoT[] = [new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT(), new MtexinfoT()];
+let r_skyverts: MvertexT[] = [];
+let r_skyedges: MedgeT[] = [];
+
+/*
+================
+R_InitSkyBox
+================
+*/
 export function R_InitSkyBox(): void {
-  throw new PendingPort("R_InitSkyBox");
+  if (!loadmodel) throw new Error("R_InitSkyBox: loadmodel not available (see file header comment)");
+
+  r_skyfaces = [];
+  for (let i = 0; i < 6; i++) r_skyfaces.push(new MsurfaceT());
+  loadmodel.surfaces.push(...r_skyfaces);
+  loadmodel.numsurfaces += 6;
+
+  r_skyverts = [];
+  for (let i = 0; i < 8; i++) r_skyverts.push(new MvertexT());
+  loadmodel.vertexes.push(...r_skyverts);
+  loadmodel.numvertexes += 8;
+
+  r_skyedges = [];
+  for (let i = 0; i < 12; i++) r_skyedges.push(new MedgeT());
+  loadmodel.edges.push(...r_skyedges);
+  loadmodel.numedges += 12;
+
+  for (let i = 0; i < 24; i++) loadmodel.surfedges.push(0);
+  loadmodel.numsurfedges += 24;
+
+  if (loadmodel.numsurfaces > MAX_MAP_FACES || loadmodel.numvertexes > MAX_MAP_VERTS || loadmodel.numedges > MAX_MAP_EDGES) {
+    ri.Sys_Error(ERR_DROP, "InitSkyBox: map overflow");
+  }
+
+  for (let i = 0; i < 6; i++) {
+    const face = r_skyfaces[i];
+    const plane = r_skyplanes[i];
+    plane.normal[skybox_planes[i * 2]] = 1;
+    plane.dist = skybox_planes[i * 2 + 1];
+
+    VectorCopy(box_vecs[i][0], r_skytexinfo[i].vecs[0]);
+    VectorCopy(box_vecs[i][1], r_skytexinfo[i].vecs[1]);
+
+    face.plane = plane;
+    face.numedges = 4;
+    face.flags = box_faces[i] | SURF_DRAWSKYBOX;
+    face.firstedge = loadmodel.numsurfedges - 24 + i * 4;
+    face.texinfo = r_skytexinfo[i];
+    face.texturemins[0] = -128;
+    face.texturemins[1] = -128;
+    face.extents[0] = 256;
+    face.extents[1] = 256;
+  }
+
+  for (let i = 0; i < 24; i++) {
+    const value = box_surfedges[i] > 0 ? loadmodel.numedges - 13 + box_surfedges[i] : -(loadmodel.numedges - 13 + -box_surfedges[i]);
+    loadmodel.surfedges[loadmodel.numsurfedges - 24 + i] = value;
+  }
+
+  for (let i = 0; i < 12; i++) {
+    r_skyedges[i].v[0] = loadmodel.numvertexes - 9 + box_edges[i * 2 + 0];
+    r_skyedges[i].v[1] = loadmodel.numvertexes - 9 + box_edges[i * 2 + 1];
+    r_skyedges[i].cachededgeoffset = 0;
+  }
 }
 
+/*
+================
+R_EmitSkyBox
+================
+*/
+function R_EmitSkyBox(): void {
+  if (insubmodel) return; // submodels should never have skies
+  if (r_skyframe === r_framecount) return; // already set this frame
+
+  r_skyframe = r_framecount;
+
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 3; j++) {
+      r_skyverts[i].position[j] = r_origin[j] + box_verts[i][j] * 128;
+    }
+  }
+
+  for (let i = 0; i < 6; i++) {
+    r_skyplanes[i].dist = skybox_planes[i * 2 + 1] > 0 ? r_origin[skybox_planes[i * 2]] + 128 : r_origin[skybox_planes[i * 2]] - 128;
+  }
+
+  for (let i = 0; i < 6; i++) {
+    r_skytexinfo[i].vecs[0][3] = -DotProduct(r_origin, r_skytexinfo[i].vecs[0]);
+    r_skytexinfo[i].vecs[1][3] = -DotProduct(r_origin, r_skytexinfo[i].vecs[1]);
+  }
+
+  const oldkey = rKey.current;
+  rKey.current = 0x7ffffff0;
+  for (let i = 0; i < 6; i++) {
+    R_RenderFace(r_skyfaces[i], 15);
+  }
+  rKey.current = oldkey; // bsp sorting order
+}
+
+/*
+================
+R_EmitEdge
+================
+*/
 export function R_EmitEdge(pv0: MvertexT, pv1: MvertexT): void {
-  throw new PendingPort("R_EmitEdge");
+  let u0: number;
+  let v0: number;
+  let lzi0: number;
+  let ceilv0: number;
+
+  if (r_lastvertvalid) {
+    u0 = r_u1;
+    v0 = r_v1;
+    lzi0 = r_lzi1;
+    ceilv0 = r_ceilv1;
+  } else {
+    const local0 = vec3();
+    const transformed0 = vec3();
+    VectorSubtract(pv0.position, modelorg, local0);
+    TransformVector(local0, transformed0);
+
+    if (transformed0[2] < NEAR_CLIP) transformed0[2] = NEAR_CLIP;
+
+    lzi0 = 1.0 / transformed0[2];
+
+    let scale = xscale * lzi0;
+    u0 = xcenter + scale * transformed0[0];
+    if (u0 < r_refdef.fvrectx_adj) u0 = r_refdef.fvrectx_adj;
+    if (u0 > r_refdef.fvrectright_adj) u0 = r_refdef.fvrectright_adj;
+
+    scale = yscale * lzi0;
+    v0 = ycenter - scale * transformed0[1];
+    if (v0 < r_refdef.fvrecty_adj) v0 = r_refdef.fvrecty_adj;
+    if (v0 > r_refdef.fvrectbottom_adj) v0 = r_refdef.fvrectbottom_adj;
+
+    ceilv0 = Math.ceil(v0);
+  }
+
+  const local1 = vec3();
+  const transformed1 = vec3();
+  VectorSubtract(pv1.position, modelorg, local1);
+  TransformVector(local1, transformed1);
+
+  if (transformed1[2] < NEAR_CLIP) transformed1[2] = NEAR_CLIP;
+
+  r_lzi1 = 1.0 / transformed1[2];
+
+  let scale = xscale * r_lzi1;
+  r_u1 = xcenter + scale * transformed1[0];
+  if (r_u1 < r_refdef.fvrectx_adj) r_u1 = r_refdef.fvrectx_adj;
+  if (r_u1 > r_refdef.fvrectright_adj) r_u1 = r_refdef.fvrectright_adj;
+
+  scale = yscale * r_lzi1;
+  r_v1 = ycenter - scale * transformed1[1];
+  if (r_v1 < r_refdef.fvrecty_adj) r_v1 = r_refdef.fvrecty_adj;
+  if (r_v1 > r_refdef.fvrectbottom_adj) r_v1 = r_refdef.fvrectbottom_adj;
+
+  if (r_lzi1 > lzi0) lzi0 = r_lzi1;
+
+  if (lzi0 > r_nearzi) r_nearzi = lzi0; // for mipmap finding
+
+  // for right edges, all we want is the effect on 1/z
+  if (r_nearzionly) return;
+
+  r_emitted = 1;
+
+  r_ceilv1 = Math.ceil(r_v1);
+
+  // create the edge
+  if (ceilv0 === r_ceilv1) {
+    // we cache unclipped horizontal edges as fully clipped
+    if (cacheoffset !== 0x7fffffff) {
+      cacheoffset = FULLY_CLIPPED_CACHED | (r_framecount & FRAMECOUNT_MASK);
+    }
+    return; // horizontal edge
+  }
+
+  if (!r_edges) throw new Error("R_EmitEdge: r_edges not initialized");
+
+  const side = ceilv0 > r_ceilv1 ? 1 : 0;
+
+  const edge = r_edges[edge_p];
+  edge_p++;
+
+  edge.owner = r_pedge;
+  edge.nearzi = lzi0;
+
+  let v: number;
+  let v2: number;
+  let u: number;
+  let u_step: number;
+
+  if (side === 0) {
+    // trailing edge (go from p1 to p2)
+    v = ceilv0;
+    v2 = r_ceilv1 - 1;
+
+    edge.surfs[0] = surface_p;
+    edge.surfs[1] = 0;
+
+    u_step = (r_u1 - u0) / (r_v1 - v0);
+    u = u0 + (v - v0) * u_step;
+  } else {
+    // leading edge (go from p2 to p1)
+    v2 = ceilv0 - 1;
+    v = r_ceilv1;
+
+    edge.surfs[0] = 0;
+    edge.surfs[1] = surface_p;
+
+    u_step = (u0 - r_u1) / (v0 - r_v1);
+    u = r_u1 + (v - r_v1) * u_step;
+  }
+
+  edge.u_step = u_step * 0x100000;
+  edge.u = u * 0x100000 + 0xfffff;
+
+  // we need to do this to avoid stepping off the edges if a very nearly
+  // horizontal edge is less than epsilon above a scan, and numeric error
+  // causes it to incorrectly extend to the scan, and the extension of the
+  // line goes off the edge of the screen
+  if (edge.u < r_refdef.vrect_x_adj_shift20) edge.u = r_refdef.vrect_x_adj_shift20;
+  if (edge.u > r_refdef.vrectright_adj_shift20) edge.u = r_refdef.vrectright_adj_shift20;
+
+  // sort the edge in normally
+  let u_check = edge.u;
+  if (edge.surfs[0]) u_check++; // sort trailers after leaders
+
+  const head = newedges[v];
+  if (!head || head.u >= u_check) {
+    edge.next = head;
+    newedges[v] = edge;
+  } else {
+    let pcheck = head;
+    while (pcheck.next && pcheck.next.u < u_check) pcheck = pcheck.next;
+    edge.next = pcheck.next;
+    pcheck.next = edge;
+  }
+
+  edge.nextremove = removeedges[v2];
+  removeedges[v2] = edge;
 }
 
-export function R_ClipEdge(pv0: MvertexT, pv1: MvertexT, clip: ClipplaneT): void {
-  throw new PendingPort("R_ClipEdge");
+/*
+================
+R_ClipEdge
+================
+*/
+export function R_ClipEdge(pv0: MvertexT, pv1: MvertexT, clip: ClipplaneT | null): void {
+  if (clip !== null) {
+    let c: ClipplaneT | null = clip;
+    do {
+      const d0 = DotProduct(pv0.position, c.normal) - c.dist;
+      const d1 = DotProduct(pv1.position, c.normal) - c.dist;
+
+      if (d0 >= 0) {
+        // point 0 is unclipped
+        if (d1 >= 0) {
+          // both points are unclipped
+          continue;
+        }
+
+        // only point 1 is clipped
+        // we don't cache clipped edges
+        cacheoffset = 0x7fffffff;
+
+        const f = d0 / (d0 - d1);
+        const clipvert = new MvertexT();
+        clipvert.position[0] = pv0.position[0] + f * (pv1.position[0] - pv0.position[0]);
+        clipvert.position[1] = pv0.position[1] + f * (pv1.position[1] - pv0.position[1]);
+        clipvert.position[2] = pv0.position[2] + f * (pv1.position[2] - pv0.position[2]);
+
+        if (c.leftedge) {
+          r_leftclipped = true;
+          r_leftexit = clipvert;
+        } else if (c.rightedge) {
+          r_rightclipped = true;
+          r_rightexit = clipvert;
+        }
+
+        R_ClipEdge(pv0, clipvert, c.next);
+        return;
+      } else {
+        // point 0 is clipped
+        if (d1 < 0) {
+          // both points are clipped
+          // we do cache fully clipped edges
+          if (!r_leftclipped) {
+            cacheoffset = FULLY_CLIPPED_CACHED | (r_framecount & FRAMECOUNT_MASK);
+          }
+          return;
+        }
+
+        // only point 0 is clipped
+        r_lastvertvalid = false;
+
+        // we don't cache partially clipped edges
+        cacheoffset = 0x7fffffff;
+
+        const f = d0 / (d0 - d1);
+        const clipvert = new MvertexT();
+        clipvert.position[0] = pv0.position[0] + f * (pv1.position[0] - pv0.position[0]);
+        clipvert.position[1] = pv0.position[1] + f * (pv1.position[1] - pv0.position[1]);
+        clipvert.position[2] = pv0.position[2] + f * (pv1.position[2] - pv0.position[2]);
+
+        if (c.leftedge) {
+          r_leftclipped = true;
+          r_leftenter = clipvert;
+        } else if (c.rightedge) {
+          r_rightclipped = true;
+          r_rightenter = clipvert;
+        }
+
+        R_ClipEdge(clipvert, pv1, c.next);
+        return;
+      }
+    } while ((c = c.next) !== null);
+  }
+
+  // add the edge
+  R_EmitEdge(pv0, pv1);
 }
 
+/*
+================
+R_EmitCachedEdge
+================
+*/
+function R_EmitCachedEdge(): void {
+  if (!r_edges) throw new Error("R_EmitCachedEdge: r_edges not initialized");
+  if (!r_pedge) throw new Error("R_EmitCachedEdge: r_pedge not set");
+
+  const pedge_t = r_edges[r_pedge.cachededgeoffset];
+
+  if (!pedge_t.surfs[0]) {
+    pedge_t.surfs[0] = surface_p;
+  } else {
+    pedge_t.surfs[1] = surface_p;
+  }
+
+  if (pedge_t.nearzi > r_nearzi) r_nearzi = pedge_t.nearzi; // for mipmap finding
+
+  r_emitted = 1;
+}
+
+/*
+================
+R_RenderFace
+================
+*/
 export function R_RenderFace(fa: MsurfaceT, clipflags: number): void {
-  throw new PendingPort("R_RenderFace");
+  if (!fa.texinfo) throw new Error("R_RenderFace: surface has no texinfo");
+
+  // translucent surfaces are not drawn by the edge renderer
+  if (fa.texinfo.flags & (SURF_TRANS33 | SURF_TRANS66)) {
+    fa.nextalphasurface = r_alpha_surfaces;
+    r_alpha_surfaces = fa;
+    return;
+  }
+
+  // sky surfaces encountered in the world will cause the
+  // environment box surfaces to be emitted
+  if (fa.texinfo.flags & SURF_SKY) {
+    R_EmitSkyBox();
+    return;
+  }
+
+  if (!surfaces) throw new Error("R_RenderFace: surfaces not initialized");
+
+  // skip out if no more surfs
+  if (surface_p >= surf_max) {
+    r_outofsurfaces++;
+    return;
+  }
+
+  // ditto if not enough edges left, or switch to auxedges if possible
+  if (edge_p + fa.numedges + 4 >= edge_max) {
+    r_outofedges += fa.numedges;
+    return;
+  }
+
+  c_faceclip++;
+
+  // set up clip planes
+  let pclip: ClipplaneT | null = null;
+  let mask = 0x08;
+  for (let i = 3; i >= 0; i--, mask >>= 1) {
+    if (clipflags & mask) {
+      view_clipplanes[i].next = pclip;
+      pclip = view_clipplanes[i];
+    }
+  }
+
+  const { currentmodel, currententity, r_pcurrentvertbase } = bspMod();
+  if (!currentmodel) throw new Error("R_RenderFace: currentmodel not set");
+  if (!r_pcurrentvertbase) throw new Error("R_RenderFace: r_pcurrentvertbase not set");
+
+  // push the edges through
+  r_emitted = 0;
+  r_nearzi = 0;
+  r_nearzionly = false;
+  makeleftedge = false;
+  makerightedge = false;
+  const pedges = currentmodel.edges;
+  r_lastvertvalid = false;
+
+  for (let i = 0; i < fa.numedges; i++) {
+    let lindex = currentmodel.surfedges[fa.firstedge + i];
+    let v0: MvertexT;
+    let v1: MvertexT;
+
+    if (lindex > 0) {
+      r_pedge = pedges[lindex];
+      v0 = r_pcurrentvertbase[r_pedge.v[0]];
+      v1 = r_pcurrentvertbase[r_pedge.v[1]];
+    } else {
+      lindex = -lindex;
+      r_pedge = pedges[lindex];
+      v0 = r_pcurrentvertbase[r_pedge.v[1]];
+      v1 = r_pcurrentvertbase[r_pedge.v[0]];
+    }
+
+    // if the edge is cached, we can just reuse the edge
+    if (!insubmodel) {
+      if (r_pedge.cachededgeoffset & FULLY_CLIPPED_CACHED) {
+        if ((r_pedge.cachededgeoffset & FRAMECOUNT_MASK) === r_framecount) {
+          r_lastvertvalid = false;
+          continue;
+        }
+      } else if (r_edges && edge_p > r_pedge.cachededgeoffset && r_edges[r_pedge.cachededgeoffset].owner === r_pedge) {
+        R_EmitCachedEdge();
+        r_lastvertvalid = false;
+        continue;
+      }
+    }
+
+    // assume it's cacheable
+    cacheoffset = edge_p;
+    r_leftclipped = false;
+    r_rightclipped = false;
+    R_ClipEdge(v0, v1, pclip);
+    r_pedge.cachededgeoffset = cacheoffset;
+
+    if (r_leftclipped) makeleftedge = true;
+    if (r_rightclipped) makerightedge = true;
+    r_lastvertvalid = true;
+  }
+
+  // this is a dummy to give the caching mechanism someplace to write to
+  const tedge = new MedgeT();
+
+  // if there was a clip off the left edge, add that edge too
+  if (makeleftedge) {
+    r_pedge = tedge;
+    r_lastvertvalid = false;
+    R_ClipEdge(r_leftexit, r_leftenter, pclip ? pclip.next : null);
+  }
+
+  // if there was a clip off the right edge, get the right r_nearzi
+  if (makerightedge) {
+    r_pedge = tedge;
+    r_lastvertvalid = false;
+    r_nearzionly = true;
+    R_ClipEdge(r_rightexit, r_rightenter, view_clipplanes[1].next);
+  }
+
+  // if no edges made it out, return without posting the surface
+  if (!r_emitted) return;
+
+  r_polycount++;
+
+  const s = surfaces[surface_p];
+  s.msurf = fa;
+  s.nearzi = r_nearzi;
+  s.flags = fa.flags;
+  s.insubmodel = insubmodel;
+  s.spanstate = 0;
+  s.entity = currententity;
+  s.key = rKey.current;
+  rKey.current++;
+  s.spans = null;
+
+  const pplane = fa.plane;
+  if (!pplane) throw new Error("R_RenderFace: surface has no plane");
+  const p_normal = vec3();
+  TransformVector(pplane.normal, p_normal);
+  const distinv = 1.0 / (pplane.dist - DotProduct(modelorg, pplane.normal));
+
+  s.d_zistepu = p_normal[0] * xscaleinv * distinv;
+  s.d_zistepv = -p_normal[1] * yscaleinv * distinv;
+  s.d_ziorigin = p_normal[2] * distinv - xcenter * s.d_zistepu - ycenter * s.d_zistepv;
+
+  surface_p++;
 }
 
-export function R_RenderBmodelFace(pedges: BedgeT, psurf: MsurfaceT): void {
-  throw new PendingPort("R_RenderBmodelFace");
+/*
+================
+R_RenderBmodelFace
+================
+*/
+export function R_RenderBmodelFace(pedges: BedgeT | null, psurf: MsurfaceT): void {
+  if (!psurf.texinfo) throw new Error("R_RenderBmodelFace: surface has no texinfo");
+
+  if (psurf.texinfo.flags & (SURF_TRANS33 | SURF_TRANS66)) {
+    psurf.nextalphasurface = r_alpha_surfaces;
+    r_alpha_surfaces = psurf;
+    return;
+  }
+
+  if (!surfaces) throw new Error("R_RenderBmodelFace: surfaces not initialized");
+
+  // skip out if no more surfs
+  if (surface_p >= surf_max) {
+    r_outofsurfaces++;
+    return;
+  }
+
+  // ditto if not enough edges left, or switch to auxedges if possible
+  if (edge_p + psurf.numedges + 4 >= edge_max) {
+    r_outofedges += psurf.numedges;
+    return;
+  }
+
+  c_faceclip++;
+
+  // this is a dummy to give the caching mechanism someplace to write to
+  const tedge = new MedgeT();
+  r_pedge = tedge;
+
+  // set up clip planes
+  let pclip: ClipplaneT | null = null;
+  let mask = 0x08;
+  for (let i = 3; i >= 0; i--, mask >>= 1) {
+    if (r_clipflags & mask) {
+      view_clipplanes[i].next = pclip;
+      pclip = view_clipplanes[i];
+    }
+  }
+
+  r_emitted = 0;
+  r_nearzi = 0;
+  r_nearzionly = false;
+  makeleftedge = false;
+  makerightedge = false;
+  r_lastvertvalid = false;
+
+  let p: BedgeT | null = pedges;
+  while (p) {
+    r_leftclipped = false;
+    r_rightclipped = false;
+    const v0 = p.v[0];
+    const v1 = p.v[1];
+    if (!v0 || !v1) throw new Error("R_RenderBmodelFace: bedge missing vertex");
+    R_ClipEdge(v0, v1, pclip);
+
+    if (r_leftclipped) makeleftedge = true;
+    if (r_rightclipped) makerightedge = true;
+    p = p.pnext;
+  }
+
+  if (makeleftedge) {
+    r_pedge = tedge;
+    R_ClipEdge(r_leftexit, r_leftenter, pclip ? pclip.next : null);
+  }
+
+  if (makerightedge) {
+    r_pedge = tedge;
+    r_nearzionly = true;
+    R_ClipEdge(r_rightexit, r_rightenter, view_clipplanes[1].next);
+  }
+
+  // if no edges made it out, return without posting the surface
+  if (!r_emitted) return;
+
+  r_polycount++;
+
+  const { currententity } = bspMod();
+  const s = surfaces[surface_p];
+  s.msurf = psurf;
+  s.nearzi = r_nearzi;
+  s.flags = psurf.flags;
+  s.insubmodel = true;
+  s.spanstate = 0;
+  s.entity = currententity;
+  s.key = rKey.currentB;
+  s.spans = null;
+
+  const pplane = psurf.plane;
+  if (!pplane) throw new Error("R_RenderBmodelFace: surface has no plane");
+  const p_normal = vec3();
+  TransformVector(pplane.normal, p_normal);
+  const distinv = 1.0 / (pplane.dist - DotProduct(modelorg, pplane.normal));
+
+  s.d_zistepu = p_normal[0] * xscaleinv * distinv;
+  s.d_zistepv = -p_normal[1] * yscaleinv * distinv;
+  s.d_ziorigin = p_normal[2] * distinv - xcenter * s.d_zistepu - ycenter * s.d_zistepv;
+
+  surface_p++;
 }
