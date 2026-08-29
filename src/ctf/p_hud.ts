@@ -22,15 +22,14 @@ import {
   ATTN_NORM,
   CHAN_ITEM,
   Com_sprintf,
-  CS_PLAYERSKINS,
   type CvarT,
+  CVAR_SERVERINFO,
   PmTypeT,
   RDF_UNDERWATER,
   STAT_AMMO,
   STAT_AMMO_ICON,
   STAT_ARMOR,
   STAT_ARMOR_ICON,
-  STAT_CHASE,
   STAT_FRAGS,
   STAT_HEALTH,
   STAT_HEALTH_ICON,
@@ -40,7 +39,6 @@ import {
   STAT_PICKUP_STRING,
   STAT_SELECTED_ICON,
   STAT_SELECTED_ITEM,
-  STAT_SPECTATOR,
   STAT_TIMER,
   STAT_TIMER_ICON,
 } from "../shared/q_shared";
@@ -61,12 +59,27 @@ import {
 import { ArmorIndex, FindItem, GetItemByIndex, ITEM_INDEX, itemlist, PowerArmorType } from "./g_items";
 import { G_Find } from "./g_utils";
 import { respawn } from "./p_client";
+import { CTFCalcScores, CTFScoreboardMessage, SetCTFStats } from "./g_ctf";
+import { PMenu_Close } from "./p_menu";
 
 // a per-file local mirrors other units' own cvarNum (module-local
 // everywhere in this codebase, not a shared export) per the established
 // house style (see p_weapon.ts).
 function cvarNum(c: CvarT | null): number {
   return c === null ? 0 : c.value;
+}
+
+// see p_client.ts's matching comment: g_ctf.ts's `ctf` cvar is a
+// module-private `let`, not re-exported, even though the real ctf/g_ctf.h
+// declares it `extern` for every ctf-track file to share. This file
+// resolves its own handle to the same underlying "ctf" cvar via gi.cvar()
+// with the identical name/default/flags -- Cvar_Get semantics mean this
+// reads the same live value g_ctf.ts's CTFInit sees. Follow-up: move `ctf`
+// into gameCvars in g_local.ts.
+let ctfCvar: CvarT | null = null;
+function ctfEnabled(): boolean {
+  if (ctfCvar === null) ctfCvar = gi.cvar("ctf", "1", CVAR_SERVERINFO);
+  return ctfCvar !== null && ctfCvar.value !== 0;
 }
 
 /*
@@ -118,6 +131,8 @@ export function MoveClientToIntermission(ent: EdictT): void {
 
 export function BeginIntermission(targ: EdictT): void {
   if (level.intermissiontime !== 0) return; // already activated
+
+  if (cvarNum(gameCvars.deathmatch) !== 0 && ctfEnabled()) CTFCalcScores();
 
   game.autosaved = false;
 
@@ -190,13 +205,18 @@ DeathmatchScoreboardMessage
 ==================
 */
 export function DeathmatchScoreboardMessage(ent: EdictT, killer: EdictT | null): void {
+  if (ctfEnabled()) {
+    CTFScoreboardMessage(ent, killer);
+    return;
+  }
+
   // sort the clients by score
   const sorted: number[] = [];
   const sortedscores: number[] = [];
 
   for (let i = 0; i < game.maxclients; i++) {
     const cl_ent = g_edicts[1 + i];
-    if (!cl_ent.inuse || game.clients[i].resp.spectator) continue;
+    if (!cl_ent.inuse) continue;
     const score = game.clients[i].resp.score;
     let j = sortedscores.findIndex((s) => score > s);
     if (j === -1) j = sortedscores.length;
@@ -272,15 +292,18 @@ export function Cmd_Score_f(ent: EdictT): void {
 
   client.showinventory = false;
   client.showhelp = false;
+  if (client.menu !== null) PMenu_Close(ent);
 
   if (cvarNum(gameCvars.deathmatch) === 0 && cvarNum(gameCvars.coop) === 0) return;
 
   if (client.showscores) {
     client.showscores = false;
+    client.update_chase = true;
     return;
   }
 
   client.showscores = true;
+
   DeathmatchScoreboard(ent);
 }
 
@@ -345,6 +368,10 @@ export function Cmd_Help_f(ent: EdictT): void {
   client.showinventory = false;
   client.showscores = false;
 
+  // ctf/p_hud.c moves game_helpchanged/helpchanged from `pers` to `resp`
+  // here (see p_view.ts's G_SetClientSound comment for why this file keeps
+  // `pers` instead: g_local.ts's ClientRespawnT, out of this unit's SCOPE,
+  // has no such fields yet).
   if (client.showhelp && client.pers.game_helpchanged === game.helpchanged) {
     client.showhelp = false;
     return;
@@ -483,46 +510,5 @@ export function G_SetStats(ent: EdictT): void {
     client.ps.stats[STAT_HELPICON] = 0;
   }
 
-  client.ps.stats[STAT_SPECTATOR] = 0;
-}
-
-/*
-===============
-G_CheckChaseStats
-===============
-*/
-export function G_CheckChaseStats(ent: EdictT): void {
-  const entClient = ent.client;
-  if (entClient === null) return;
-
-  const maxclients = cvarNum(gameCvars.maxclients);
-  for (let i = 1; i <= maxclients; i++) {
-    const e = g_edicts[i];
-    const cl = e.client;
-    if (!e.inuse || cl === null || cl.chase_target !== ent) continue;
-    cl.ps.stats.set(entClient.ps.stats);
-    G_SetSpectatorStats(e);
-  }
-}
-
-/*
-===============
-G_SetSpectatorStats
-===============
-*/
-export function G_SetSpectatorStats(ent: EdictT): void {
-  const cl = ent.client;
-  if (cl === null) return;
-
-  if (cl.chase_target === null) G_SetStats(ent);
-
-  cl.ps.stats[STAT_SPECTATOR] = 1;
-
-  // layouts are independant in spectator
-  cl.ps.stats[STAT_LAYOUTS] = 0;
-  if (cl.pers.health <= 0 || level.intermissiontime !== 0 || cl.showscores) cl.ps.stats[STAT_LAYOUTS] |= 1;
-  if (cl.showinventory && cl.pers.health > 0) cl.ps.stats[STAT_LAYOUTS] |= 2;
-
-  if (cl.chase_target !== null && cl.chase_target.inuse) cl.ps.stats[STAT_CHASE] = CS_PLAYERSKINS + (cl.chase_target.s.number - 1);
-  else cl.ps.stats[STAT_CHASE] = 0;
+  SetCTFStats(ent);
 }

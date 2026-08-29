@@ -46,6 +46,7 @@ import {
   RF_SHELL_RED,
   ROLL,
   STAT_FLASHES,
+  STAT_LAYOUTS,
   YAW,
 } from "../shared/q_shared";
 import {
@@ -61,6 +62,8 @@ import {
   FALL_TIME,
   FL_GODMODE,
   FL_INWATER,
+  FRAMETIME,
+  g_edicts,
   gameCvars,
   gameIndices,
   game,
@@ -79,8 +82,10 @@ import {
 } from "./g_local";
 import { T_Damage } from "./g_combat";
 import { PowerArmorType } from "./g_items";
-import { DeathmatchScoreboardMessage, G_CheckChaseStats, G_SetSpectatorStats, G_SetStats } from "./p_hud";
+import { DeathmatchScoreboardMessage, G_SetStats } from "./p_hud";
 import { PlayerNoise } from "./p_weapon";
+import { CTFEffects, CtfGrapplestateT } from "./g_ctf";
+import { PMenu_Do_Update } from "./p_menu";
 
 // a per-file local mirrors other units' own cvarNum (module-local
 // everywhere in this codebase, not a shared export) per the established
@@ -502,6 +507,14 @@ export function P_FallingDamage(ent: EdictT): void {
   }
   delta = delta * delta * 0.0001;
 
+  // never take damage if just release grapple or on grapple
+  if (
+    level.time - client.ctf_grapplereleasetime <= FRAMETIME * 2 ||
+    (client.ctf_grapple !== null && client.ctf_grapplestate > CtfGrapplestateT.CTF_GRAPPLE_STATE_FLY)
+  ) {
+    return;
+  }
+
   // never take falling damage if completely underwater
   if (ent.waterlevel === 3) return;
   if (ent.waterlevel === 2) delta *= 0.25;
@@ -690,14 +703,16 @@ export function G_SetClientEffects(ent: EdictT): void {
     }
   }
 
+  CTFEffects(ent);
+
   const client = ent.client;
   if (client !== null) {
-    if (client.quad_framenum > level.framenum) {
+    if (client.quad_framenum > level.framenum && (level.framenum & 8) !== 0) {
       const remaining = client.quad_framenum - level.framenum;
       if (remaining > 30 || (remaining & 4) !== 0) ent.s.effects |= EF_QUAD;
     }
 
-    if (client.invincible_framenum > level.framenum) {
+    if (client.invincible_framenum > level.framenum && (level.framenum & 8) !== 0) {
       const remaining = client.invincible_framenum - level.framenum;
       if (remaining > 30 || (remaining & 4) !== 0) ent.s.effects |= EF_PENT;
     }
@@ -732,6 +747,12 @@ export function G_SetClientSound(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 
+  // ctf/p_view.c moves game_helpchanged/helpchanged from `pers` to `resp`
+  // here and in p_hud.c's Cmd_Help_f/G_SetStats; g_local.ts's ClientRespawnT
+  // (out of this unit's SCOPE) has no such fields, only ClientPersistantT
+  // does, so this keeps reading/writing `pers` to stay compiling. Reported
+  // as an omission/follow-up: add game_helpchanged/helpchanged to
+  // ClientRespawnT in g_local.ts, then move these three call sites over.
   if (client.pers.game_helpchanged !== game.helpchanged) {
     client.pers.game_helpchanged = game.helpchanged;
     client.pers.helpchanged = 1;
@@ -805,9 +826,15 @@ export function G_SetClientFrame(ent: EdictT): void {
   client.anim_run = run;
 
   if (ent.groundentity === null) {
-    client.anim_priority = ANIM_JUMP;
-    if (ent.s.frame !== FRAME_jump2) ent.s.frame = FRAME_jump1;
-    client.anim_end = FRAME_jump2;
+    // if on grapple, don't go into jump frame, go into standing frame
+    if (client.ctf_grapple !== null) {
+      ent.s.frame = FRAME_stand01;
+      client.anim_end = FRAME_stand40;
+    } else {
+      client.anim_priority = ANIM_JUMP;
+      if (ent.s.frame !== FRAME_jump2) ent.s.frame = FRAME_jump1;
+      client.anim_end = FRAME_jump2;
+    }
   } else if (run) {
     // running
     if (duck) {
@@ -927,10 +954,17 @@ export function ClientEndServerFrame(ent: EdictT): void {
   // should be determined by the client
   SV_CalcBlend(ent);
 
-  // chase cam stuff
-  if (client.resp.spectator) G_SetSpectatorStats(ent);
-  else G_SetStats(ent);
-  G_CheckChaseStats(ent);
+  if (client.chase_target === null) G_SetStats(ent);
+
+  // update chasecam follower stats
+  const maxclients = cvarNum(gameCvars.maxclients);
+  for (let i = 1; i <= maxclients; i++) {
+    const e = g_edicts[i];
+    if (e === undefined || !e.inuse || e.client === null || e.client.chase_target !== ent) continue;
+    e.client.ps.stats.set(client.ps.stats);
+    e.client.ps.stats[STAT_LAYOUTS] = 1;
+    break;
+  }
 
   G_SetClientEvent(ent);
 
@@ -949,7 +983,13 @@ export function ClientEndServerFrame(ent: EdictT): void {
 
   // if the scoreboard is up, update it
   if (client.showscores && (level.framenum & 31) === 0) {
-    DeathmatchScoreboardMessage(ent, ent.enemy);
+    if (client.menu !== null) {
+      PMenu_Do_Update(ent);
+      client.menudirty = false;
+      client.menutime = level.time;
+    } else {
+      DeathmatchScoreboardMessage(ent, ent.enemy);
+    }
     gi.unicast(ent, false);
   }
 }

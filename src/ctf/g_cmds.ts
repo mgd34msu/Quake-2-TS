@@ -3,6 +3,7 @@
 import { vec3_origin } from "../shared/math";
 import {
   Com_sprintf,
+  CVAR_SERVERINFO,
   DF_MODELTEAMS,
   DF_SKINTEAMS,
   Info_ValueForKey,
@@ -34,10 +35,31 @@ import {
   svc_inventory,
 } from "./g_local";
 import type { Edict } from "./game";
+import { SolidT } from "./game";
 import { ChaseNext, ChasePrev } from "./g_chase";
 import { Add_Ammo, FindItem, ITEM_INDEX, itemlist, SpawnItem, Touch_Item } from "./g_items";
 import { G_FreeEdict, G_Spawn } from "./g_utils";
 import { player_die } from "./p_client";
+import { PMenu_Close, PMenu_Next, PMenu_Prev, PMenu_Select } from "./p_menu";
+import {
+  CTFAdmin,
+  CTFBoot,
+  CTFGhost,
+  CTFID_f,
+  CtfTeamT,
+  CTFNotReady,
+  CTFObserver,
+  CTFOpenJoinMenu,
+  CTFPlayerList,
+  CTFReady,
+  CTFSay_Team,
+  CTFStats,
+  CTFTeam_f,
+  CTFVoteNo,
+  CTFVoteYes,
+  CTFWarp,
+  CTFWhat_Tech,
+} from "./g_ctf";
 
 import { FRAME_flip01, FRAME_flip12, FRAME_salute01, FRAME_salute11, FRAME_taunt01, FRAME_taunt17, FRAME_wave01, FRAME_wave11, FRAME_point01, FRAME_point12 } from "./m_player_frames";
 
@@ -48,6 +70,18 @@ function atoiC(s: string): number {
 }
 
 function cvarNum(c: { value: number } | null): number {
+  return c === null ? 0 : c.value;
+}
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- g_ctf.ts registers this cvar in
+// CTFInit() but keeps the resulting CvarT reference module-local (per
+// .orch/decisions.tsv's g_ctf.ts cvar-ownership note, same pattern as
+// g_main.ts's ctfCvar()), so this file -- which only reads it -- re-fetches
+// the same cvar object via gi.cvar() at each read site. gi.cvar() is
+// idempotent (Cvar_Get semantics): once CTFInit() has registered "ctf",
+// every later gi.cvar("ctf", ...) call returns that same CvarT.
+function ctfCvar(): number {
+  const c = gi.cvar("ctf", "1", CVAR_SERVERINFO);
   return c === null ? 0 : c.value;
 }
 
@@ -76,7 +110,10 @@ export function SelectNextItem(ent: EdictT, itflags: number): void {
   const cl = ent.client;
   if (cl === null) return;
 
-  if (cl.chase_target !== null) {
+  if (cl.menu !== null) {
+    PMenu_Next(ent);
+    return;
+  } else if (cl.chase_target !== null) {
     ChaseNext(ent);
     return;
   }
@@ -101,7 +138,10 @@ export function SelectPrevItem(ent: EdictT, itflags: number): void {
   const cl = ent.client;
   if (cl === null) return;
 
-  if (cl.chase_target !== null) {
+  if (cl.menu !== null) {
+    PMenu_Prev(ent);
+    return;
+  } else if (cl.chase_target !== null) {
     ChasePrev(ent);
     return;
   }
@@ -355,6 +395,15 @@ export function Cmd_Drop_f(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 
+  //special case for tech powerups
+  if (Q_stricmp(gi.args(), "tech") === 0) {
+    const tech = CTFWhat_Tech(ent);
+    if (tech !== null && tech.drop !== null) {
+      tech.drop(ent, tech);
+      return;
+    }
+  }
+
   const s = gi.args();
   const it = FindItem(s);
   if (it === null) {
@@ -386,8 +435,19 @@ export function Cmd_Inven_f(ent: EdictT): void {
   cl.showscores = false;
   cl.showhelp = false;
 
+  if (cl.menu !== null) {
+    PMenu_Close(ent);
+    cl.update_chase = true;
+    return;
+  }
+
   if (cl.showinventory) {
     cl.showinventory = false;
+    return;
+  }
+
+  if (ctfCvar() !== 0 && cl.resp.ctf_team === CtfTeamT.CTF_NOTEAM) {
+    CTFOpenJoinMenu(ent);
     return;
   }
 
@@ -409,6 +469,11 @@ export function Cmd_InvUse_f(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 
+  if (client.menu !== null) {
+    PMenu_Select(ent);
+    return;
+  }
+
   ValidateSelectedItem(ent);
 
   if (client.pers.selected_item === -1) {
@@ -422,6 +487,20 @@ export function Cmd_InvUse_f(ent: EdictT): void {
     return;
   }
   it.use(ent, it);
+}
+
+/*
+=================
+Cmd_LastWeap_f
+=================
+*/
+export function Cmd_LastWeap_f(ent: EdictT): void {
+  const cl = ent.client;
+  if (cl === null) return;
+
+  if (cl.pers.weapon === null || cl.pers.lastweapon === null) return;
+
+  if (cl.pers.lastweapon.use) cl.pers.lastweapon.use(ent, cl.pers.lastweapon);
 }
 
 /*
@@ -528,6 +607,8 @@ export function Cmd_Kill_f(ent: EdictT): void {
   const client = ent.client;
   if (client === null) return;
 
+  if (ent.solid === SolidT.SOLID_NOT) return;
+
   if (level.time - client.respawn_time < 5) return;
   ent.flags &= ~FL_GODMODE;
   ent.health = 0;
@@ -547,6 +628,8 @@ export function Cmd_PutAway_f(ent: EdictT): void {
   client.showscores = false;
   client.showhelp = false;
   client.showinventory = false;
+  if (client.menu !== null) PMenu_Close(ent);
+  client.update_chase = true;
 }
 
 function PlayerSort(a: number, b: number): number {
@@ -638,6 +721,34 @@ export function Cmd_Wave_f(ent: EdictT): void {
   }
 }
 
+// CheckFlood is g_ctf.ts's CTFSay_Team delta on top of the base Cmd_Say_f's
+// inline flood-protection block: pulled out into its own function so both
+// call sites share the same rate limiting.
+export function CheckFlood(ent: EdictT): boolean {
+  const client = ent.client;
+  if (client === null) return false;
+
+  const floodMsgs = cvarNum(gameCvars.flood_msgs);
+  if (floodMsgs) {
+    if (level.time < client.flood_locktill) {
+      gi.cprintf(ent, PRINT_HIGH, `You can't talk for ${Math.trunc(client.flood_locktill - level.time)} more seconds\n`);
+      return true;
+    }
+    let i = client.flood_whenhead - floodMsgs + 1;
+    if (i < 0) i = client.flood_when.length + i;
+    const floodPersecond = cvarNum(gameCvars.flood_persecond);
+    if (client.flood_when[i] && level.time - client.flood_when[i] < floodPersecond) {
+      const floodWaitdelay = cvarNum(gameCvars.flood_waitdelay);
+      client.flood_locktill = level.time + floodWaitdelay;
+      gi.cprintf(ent, PRINT_CHAT, `Flood protection:  You can't talk for ${Math.trunc(floodWaitdelay)} seconds.\n`);
+      return true;
+    }
+    client.flood_whenhead = (client.flood_whenhead + 1) % client.flood_when.length;
+    client.flood_when[client.flood_whenhead] = level.time;
+  }
+  return false;
+}
+
 /*
 ==================
 Cmd_Say_f
@@ -673,24 +784,7 @@ export function Cmd_Say_f(ent: EdictT, teamIn: boolean, arg0: boolean): void {
 
   text += "\n";
 
-  const floodMsgs = cvarNum(gameCvars.flood_msgs);
-  if (floodMsgs) {
-    if (level.time < client.flood_locktill) {
-      gi.cprintf(ent, PRINT_HIGH, `You can't talk for ${Math.trunc(client.flood_locktill - level.time)} more seconds\n`);
-      return;
-    }
-    let i = client.flood_whenhead - floodMsgs + 1;
-    if (i < 0) i = client.flood_when.length + i;
-    const floodPersecond = cvarNum(gameCvars.flood_persecond);
-    if (client.flood_when[i] && level.time - client.flood_when[i] < floodPersecond) {
-      const floodWaitdelay = cvarNum(gameCvars.flood_waitdelay);
-      client.flood_locktill = level.time + floodWaitdelay;
-      gi.cprintf(ent, PRINT_CHAT, `Flood protection:  You can't talk for ${Math.trunc(floodWaitdelay)} seconds.\n`);
-      return;
-    }
-    client.flood_whenhead = (client.flood_whenhead + 1) % client.flood_when.length;
-    client.flood_when[client.flood_whenhead] = level.time;
-  }
+  if (CheckFlood(ent)) return;
 
   if (cvarNum(gameCvars.dedicated)) gi.cprintf(null, PRINT_CHAT, text);
 
@@ -706,34 +800,9 @@ export function Cmd_Say_f(ent: EdictT, teamIn: boolean, arg0: boolean): void {
   }
 }
 
-export function Cmd_PlayerList_f(ent: EdictT): void {
-  const maxclients = cvarNum(gameCvars.maxclients);
-
-  let text = "";
-  for (let i = 0; i < maxclients; i++) {
-    const e2 = g_edicts[i + 1];
-    if (!e2.inuse) continue;
-    const client = e2.client;
-    if (client === null) continue;
-
-    const st = Com_sprintf(
-      "%02i:%02i %4i %3i %s%s\n",
-      Math.trunc((level.framenum - client.resp.enterframe) / 600),
-      Math.trunc(((level.framenum - client.resp.enterframe) % 600) / 10),
-      client.ping,
-      client.resp.score,
-      client.pers.netname,
-      client.resp.spectator ? " (spectator)" : "",
-    );
-    if (text.length + st.length > 1400 - 50) {
-      text += "And more...\n";
-      gi.cprintf(ent, PRINT_HIGH, text);
-      return;
-    }
-    text += st;
-  }
-  gi.cprintf(ent, PRINT_HIGH, text);
-}
+// Cmd_PlayerList_f is dropped: ctf/g_cmds.c removes this function entirely
+// and rewires the "playerlist" command to g_ctf.c's CTFPlayerList instead
+// (see ClientCommand below).
 
 import { Cmd_Help_f, Cmd_Score_f } from "./p_hud";
 
@@ -760,8 +829,8 @@ export function ClientCommand(edict: Edict): void {
     Cmd_Say_f(ent, false, false);
     return;
   }
-  if (Q_stricmp(cmd, "say_team") === 0) {
-    Cmd_Say_f(ent, true, false);
+  if (Q_stricmp(cmd, "say_team") === 0 || Q_stricmp(cmd, "steam") === 0) {
+    CTFSay_Team(ent, gi.args());
     return;
   }
   if (Q_stricmp(cmd, "score") === 0) {
@@ -796,6 +865,18 @@ export function ClientCommand(edict: Edict): void {
   else if (Q_stricmp(cmd, "kill") === 0) Cmd_Kill_f(ent);
   else if (Q_stricmp(cmd, "putaway") === 0) Cmd_PutAway_f(ent);
   else if (Q_stricmp(cmd, "wave") === 0) Cmd_Wave_f(ent);
-  else if (Q_stricmp(cmd, "playerlist") === 0) Cmd_PlayerList_f(ent);
+  else if (Q_stricmp(cmd, "team") === 0) CTFTeam_f(ent);
+  else if (Q_stricmp(cmd, "id") === 0) CTFID_f(ent);
+  else if (Q_stricmp(cmd, "yes") === 0) CTFVoteYes(ent);
+  else if (Q_stricmp(cmd, "no") === 0) CTFVoteNo(ent);
+  else if (Q_stricmp(cmd, "ready") === 0) CTFReady(ent);
+  else if (Q_stricmp(cmd, "notready") === 0) CTFNotReady(ent);
+  else if (Q_stricmp(cmd, "ghost") === 0) CTFGhost(ent);
+  else if (Q_stricmp(cmd, "admin") === 0) CTFAdmin(ent);
+  else if (Q_stricmp(cmd, "stats") === 0) CTFStats(ent);
+  else if (Q_stricmp(cmd, "warp") === 0) CTFWarp(ent);
+  else if (Q_stricmp(cmd, "boot") === 0) CTFBoot(ent);
+  else if (Q_stricmp(cmd, "playerlist") === 0) CTFPlayerList(ent);
+  else if (Q_stricmp(cmd, "observer") === 0) CTFObserver(ent);
   else Cmd_Say_f(ent, false, true); // anything that doesn't match a command will be a chat
 }

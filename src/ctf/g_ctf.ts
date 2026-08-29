@@ -48,7 +48,6 @@ import {
   TempEventT,
   YAW,
 } from "../shared/q_shared";
-import { PendingPort } from "../qcommon/pending";
 import { SolidT, SVF_NOCLIENT } from "./game";
 import {
   ANIM_DEATH,
@@ -86,6 +85,7 @@ import { SV_AddGravity } from "./g_phys";
 import { FRAME_death308 } from "./m_player_frames";
 import { EndDMLevel } from "./g_main";
 import { PMenu_Close, PMenu_Open, PMenu_Update, PMenu_UpdateEntry, PMENU_ALIGN_CENTER, PMENU_ALIGN_LEFT, PMENU_ALIGN_RIGHT, PmenuHndT, PmenuT, type SelectFuncT } from "./p_menu";
+import { CheckFlood } from "./g_cmds";
 
 //===========================================================================
 // g_ctf.h
@@ -325,13 +325,6 @@ export function stuffcmd(ent: EdictT, s: string): void {
   gi.WriteByte(11);
   gi.WriteString(s);
   gi.unicast(ent, true);
-}
-
-// CheckFlood is defined in ctf/g_cmds.c (a g_cmds.c ctf-delta this unit does
-// not port -- see this unit's brief). Calling CTFSay_Team before that unit
-// lands throws PendingPort, per PORTING.md's pending-stub convention.
-function CheckFlood(_ent: EdictT): boolean {
-  throw new PendingPort("CheckFlood (owner: ctf/g_cmds.c delta, not yet ported)");
 }
 
 /*--------------------------------------------------------------------------*/

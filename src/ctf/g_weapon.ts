@@ -46,11 +46,12 @@ import {
   SURF_TRANS33,
   SURF_TRANS66,
   SURF_WARP,
+  CVAR_SERVERINFO,
   TempEventT,
 } from "../shared/q_shared";
 import { infront } from "./g_ai";
 import { CanDamage, T_Damage, T_RadiusDamage } from "./g_combat";
-import { type Edict, SolidT, SVF_DEADMONSTER, SVF_MONSTER } from "./game";
+import { type Edict, SolidT, SVF_MONSTER, SVF_PROJECTILE } from "./game";
 import { findradius, G_FreeEdict, G_Spawn, vectoangles } from "./g_utils";
 import {
   DAMAGE_BULLET,
@@ -106,6 +107,14 @@ function requireOwner(ent: EdictT): EdictT {
     throw new Error("owner is null (C dereferences it unconditionally here)");
   }
   return ent.owner;
+}
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- see src/ctf/g_main.ts's ctfCvar()
+// comment for why this re-fetches via gi.cvar() instead of importing the
+// module-local CvarT that g_ctf.ts's CTFInit() registers.
+function ctfCvarValue(): number {
+  const c = gi.cvar("ctf", "1", CVAR_SERVERINFO);
+  return c === null ? 0 : c.value;
 }
 
 /*
@@ -444,12 +453,7 @@ export function fire_blaster(
   VectorNormalize(dir);
 
   const bolt = G_Spawn();
-  bolt.svflags = SVF_DEADMONSTER;
-  // yes, I know it looks weird that projectiles are deadmonsters
-  // what this means is that when prediction is used against the object
-  // (blaster/hyperblaster shots), the player won't be solid clipped against
-  // the object.  Right now trying to run into a firing hyperblaster
-  // is very jerky since you are predicted 'against' the shots.
+  bolt.svflags = SVF_PROJECTILE; // special net code is used for projectiles
   VectorCopy(start, bolt.s.origin);
   VectorCopy(start, bolt.s.old_origin);
   vectoangles(dir, bolt.s.angles);
@@ -873,6 +877,11 @@ export function bfg_think(self: EdictT): void {
     if (ent === self.owner) continue;
     if (!ent.takedamage) continue;
     if ((ent.svflags & SVF_MONSTER) === 0 && ent.client === null && ent.classname !== "misc_explobox") continue;
+
+    //ZOID
+    // don't target players in CTF
+    if (ctfCvarValue() !== 0 && ent.client !== null && owner.client !== null && ent.client.resp.ctf_team === owner.client.resp.ctf_team) continue;
+    //ZOID
 
     const point = vec3();
     VectorMA(ent.absmin, 0.5, ent.size, point);

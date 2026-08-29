@@ -1,7 +1,7 @@
 // g_main.c
 
 import { VectorCopy } from "../shared/math";
-import { Com_sprintf, type CvarT, DF_SAME_LEVEL, PRINT_HIGH, Q_stricmp, type UsercmdT } from "../shared/q_shared";
+import { Com_sprintf, CVAR_SERVERINFO, type CvarT, DF_SAME_LEVEL, PRINT_HIGH, Q_stricmp, type UsercmdT } from "../shared/q_shared";
 import { AI_SetSightClient } from "./g_ai";
 import { ClientCommand } from "./g_cmds";
 import { type Edict, GAME_API_VERSION, type GameExports, type GameImports, SVF_MONSTER } from "./game";
@@ -28,6 +28,7 @@ import { ServerCommand } from "./g_svcmds";
 import { G_Find, G_Spawn } from "./g_utils";
 import { SpawnEntities } from "./g_spawn";
 import { InitGame, ReadGame, ReadLevel, WriteGame, WriteLevel } from "./g_save";
+import { CTFCheckRules, CTFInMatch, CTFNextMap } from "./g_ctf";
 
 
 
@@ -42,6 +43,17 @@ function cvarNum(c: CvarT | null): number {
 }
 function cvarStr(c: CvarT | null): string {
   return c === null ? "" : c.string;
+}
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- g_ctf.ts registers this cvar in
+// CTFInit() but keeps the resulting CvarT reference module-local (per
+// .orch/decisions.tsv's g_ctf.ts cvar-ownership note), so g_main.ts -- which
+// only reads it, never registers it -- re-fetches the same cvar object via
+// gi.cvar() at each read site instead of importing it. gi.cvar() is
+// idempotent (Cvar_Get semantics): once CTFInit() has registered "ctf",
+// every later gi.cvar("ctf", ...) call returns that same CvarT.
+function ctfCvar(): CvarT | null {
+  return gi.cvar("ctf", "1", CVAR_SERVERINFO);
 }
 
 //===================================================================
@@ -156,6 +168,11 @@ export function EndDMLevel(): void {
     return;
   }
 
+  if (level.forcemap.length > 0) {
+    BeginIntermission(CreateTargetChangeLevel(level.forcemap));
+    return;
+  }
+
   // see if it's in the map list
   const maplist = cvarStr(gameCvars.sv_maplist);
   if (maplist.length > 0) {
@@ -214,6 +231,14 @@ export function CheckDMRules(): void {
 
   if (cvarNum(gameCvars.deathmatch) === 0) return;
 
+  //ZOID
+  if (cvarNum(ctfCvar()) !== 0 && CTFCheckRules()) {
+    EndDMLevel();
+    return;
+  }
+  if (CTFInMatch()) return; // no checking in match mode
+  //ZOID
+
   const timelimit = cvarNum(gameCvars.timelimit);
   if (timelimit !== 0) {
     if (level.time >= timelimit * 60) {
@@ -245,16 +270,22 @@ ExitLevel
 =============
 */
 export function ExitLevel(): void {
+  level.exitintermission = 0;
+  level.intermissiontime = 0;
+
+  //ZOID
+  if (CTFNextMap()) return;
+  //ZOID
+
   // level.changemap is always populated by the caller before
   // exitintermission is set (see the C comment on ExitLevel's callers); the
   // `?? ""` fallback exists only to satisfy TS's `string | null` typing of
   // level.changemap, not to change behavior.
   const command = Com_sprintf('gamemap "%s"\n', level.changemap ?? "");
   gi.AddCommandString(command);
-  level.changemap = null;
-  level.exitintermission = 0;
-  level.intermissiontime = 0;
   ClientEndServerFrames();
+
+  level.changemap = null;
 
   // clear some things before going to next level
   const maxclients = cvarNum(gameCvars.maxclients);

@@ -42,6 +42,7 @@ import {
   SetGEdicts,
 } from "./g_local";
 import { FindItemByClassname, InitItems } from "./g_items";
+import { CTFInit } from "./g_ctf";
 
 // -------------------------------------------------------------------------
 // field_t / fields[] -- moved here from g_spawn.ts per that file's own
@@ -285,13 +286,6 @@ import {
   trigger_relay_use,
   Use_Multi,
 } from "./g_trigger";
-import {
-  turret_breach_finish_init,
-  turret_breach_think,
-  turret_driver_die,
-  turret_driver_link,
-  turret_driver_think,
-} from "./g_turret";
 import { G_FreeEdict, Think_Delay } from "./g_utils";
 import { bfg_explode, bfg_think, bfg_touch, blaster_touch, Grenade_Explode, Grenade_Touch, rocket_touch } from "./g_weapon";
 import { body_die, player_die, player_pain } from "./p_client";
@@ -344,11 +338,6 @@ function populateSaveRegistry(): void {
     ["trigger_key_use", trigger_key_use],
     ["trigger_counter_use", trigger_counter_use],
     ["hurt_use", hurt_use],
-    ["turret_breach_think", turret_breach_think],
-    ["turret_breach_finish_init", turret_breach_finish_init],
-    ["turret_driver_think", turret_driver_think],
-    ["turret_driver_link", turret_driver_link],
-    ["turret_driver_die", turret_driver_die],
     ["Think_Delay", Think_Delay],
     ["G_FreeEdict", G_FreeEdict],
     ["Grenade_Explode", Grenade_Explode],
@@ -1213,19 +1202,32 @@ export function InitGame(): void {
   gi.cvar("gamedate", SAVE_VERSION_STAMP, CVAR_SERVERINFO | CVAR_LATCH);
 
   gameCvars.maxclients = gi.cvar("maxclients", "4", CVAR_SERVERINFO | CVAR_LATCH);
-  gameCvars.maxspectators = gi.cvar("maxspectators", "4", CVAR_SERVERINFO);
   gameCvars.deathmatch = gi.cvar("deathmatch", "0", CVAR_LATCH);
   gameCvars.coop = gi.cvar("coop", "0", CVAR_LATCH);
   gameCvars.skill = gi.cvar("skill", "1", CVAR_LATCH);
   gameCvars.maxentities = gi.cvar("maxentities", "1024", CVAR_LATCH);
 
+  //ZOID
+  //This game.dll only supports deathmatch
+  if (cvarNum(gameCvars.deathmatch) === 0) {
+    gi.dprintf("Forcing deathmatch.");
+    gameCvars.deathmatch = gi.cvar_set("deathmatch", "1");
+  }
+  //force coop off
+  if (cvarNum(gameCvars.coop) !== 0) {
+    gameCvars.coop = gi.cvar_set("coop", "0");
+  }
+  //ZOID
+
   // change anytime vars
   gameCvars.dmflags = gi.cvar("dmflags", "0", CVAR_SERVERINFO);
   gameCvars.fraglimit = gi.cvar("fraglimit", "0", CVAR_SERVERINFO);
   gameCvars.timelimit = gi.cvar("timelimit", "0", CVAR_SERVERINFO);
+  //ZOID
+  gameCvars.capturelimit = gi.cvar("capturelimit", "0", CVAR_SERVERINFO);
+  gameCvars.instantweap = gi.cvar("instantweap", "0", CVAR_SERVERINFO);
+  //ZOID
   gameCvars.password = gi.cvar("password", "", CVAR_USERINFO);
-  gameCvars.spectator_password = gi.cvar("spectator_password", "", CVAR_USERINFO);
-  gameCvars.filterban = gi.cvar("filterban", "1", 0);
 
   gameCvars.g_select_empty = gi.cvar("g_select_empty", "0", CVAR_ARCHIVE);
 
@@ -1262,6 +1264,10 @@ export function InitGame(): void {
   game.clients = Array.from({ length: numClients }, () => new GClientT());
 
   globals.num_edicts = numClients + 1;
+
+  //ZOID
+  CTFInit();
+  //ZOID
 }
 
 // `gi.TagMalloc(maxentities * sizeof(g_edicts[0]), TAG_GAME)` -- a fresh,

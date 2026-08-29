@@ -30,7 +30,7 @@ import {
   MSG_WriteAngle,
   SZ_Write,
 } from "../qcommon/sizebuf";
-import { Cvar_Get, Cvar_Set, Cvar_ForceSet } from "../qcommon/cvar";
+import { Cvar_Get, Cvar_Set, Cvar_ForceSet, Cvar_VariableString } from "../qcommon/cvar";
 import { Cmd_Argc, Cmd_Argv, Cmd_Args } from "../qcommon/cmd";
 import { Cbuf_AddText } from "../qcommon/cmd";
 import { CM_InlineModel, CM_PointLeafnum, CM_LeafArea, CM_LeafCluster, CM_ClusterPVS, CM_ClusterPHS, CM_AreasConnected, CM_SetAreaPortalState } from "../qcommon/cmodel";
@@ -38,12 +38,97 @@ import { Pmove } from "../qcommon/pmove";
 import type { GameExports, GameImports, Edict } from "../game/game";
 import { GAME_API_VERSION } from "../game/game";
 import { GetGameAPI } from "../game/g_main";
+import type { GameExports as CtfGameExports } from "../ctf/game";
+// The C engine picks the game DLL by loading gamex86.dll (or the platform
+// equivalent) out of the mod directory named by the "game" cvar (FS_Gamedir()
+// / Sys_GetGameAPI(), sv_main.c/sys_*.c) -- there is no DLL boundary in this
+// port (see this file's header comment), so both game tracks are statically
+// imported here and SV_InitGameProgs picks between their GetGameAPI exports
+// by reading the same "game" cvar directly, in-process, instead of loading a
+// shared library from a mod directory.
+import { GetGameAPI as CTF_GetGameAPI } from "../ctf/g_main";
 import { sv, svs, ServerStateT, maxclients } from "./server";
 import { SV_BroadcastPrintf, SV_Multicast, SV_ClientPrintf, SV_StartSound } from "./sv_send";
 import { SV_ModelIndex, SV_SoundIndex, SV_ImageIndex } from "./sv_init";
 import { SV_LinkEdict, SV_UnlinkEdict, SV_AreaEdicts, SV_Trace, SV_PointContents } from "./sv_world";
 
 export const geHolder: { ge: GameExports | null } = { ge: null };
+
+// Runtime game-track selection (see SV_InitGameProgs below): src/ctf/game.ts's
+// GameExports is NOT structurally assignable to src/game/game.ts's GameExports
+// wholesale -- ctf/g_local.ts's GClientT/EdictT classes add ctf-only fields
+// (ctf_team, ctf_grapple, menu, ...), and GameExports.edicts: EdictT[] plus
+// item-callback fields (gitem_t.pickup(ent: EdictT, ...)) embed that
+// track-specific EdictT/GClientT type, so the two GameExports shapes fail
+// structural assignment in both directions once TS walks into those nested
+// callback parameter types (contravariance) -- confirmed by trying a plain
+// union type for `geHolder.ge`, which surfaced the exact mismatch and, worse,
+// broke sv_ccmds.ts/sv_init.ts/sv_main.ts/sv_user.ts's own `const ge:
+// GameExports = geHolder.ge` annotations (files outside this unit's SCOPE).
+// adaptCtfGameExports bridges the gap for every member that only crosses the
+// track boundary through the shared, track-agnostic `Edict` interface (which
+// -- unlike EdictT/GClientT -- is identical between src/game/game.ts and
+// src/ctf/game.ts: same fields, `client: unknown`, no self-referential
+// EdictT/GClientT typed members), which covers every GameExports member
+// except edicts/num_edicts/max_edicts.
+//
+// Known limitation (reported, not silently patched): edicts/num_edicts/
+// max_edicts stay at GetGameAPI's own zero-initialized defaults ([]/0/0) on
+// the ctf branch, same as the base track's GetGameAPI starts them (see
+// g_main.ts's own GameExports comment) -- but the base track's InitGame
+// mutates them live afterward via the `globals`/`exportsObj` object-identity
+// trick (g_local.ts's SetGameExports keeps `globals` and the returned
+// GameExports the same object), and ctf's InitGame does the identical thing
+// to *its own* ctf-typed GameExports object, which this adapter cannot
+// re-expose as base-typed EdictT[] without either an `as` cast (forbidded by
+// this port's rule 2) or editing src/game/game.ts's/src/ctf/game.ts's
+// `edicts: EdictT[]` field to the shared `Edict[]` type (out of this unit's
+// SCOPE, which covers sv_game.ts's selection only). Net effect: ctf's Init/
+// Shutdown/SpawnEntities/ClientConnect/ClientBegin/ClientUserinfoChanged/
+// ClientDisconnect/ClientCommand/ClientThink/RunFrame/ServerCommand/WriteGame/
+// ReadGame/WriteLevel/ReadLevel all genuinely run ctf's implementations; the
+// world-entity list exposed through `geHolder.ge.edicts` for server-side
+// netcode (sv_ents.ts et al.) does not yet reflect ctf's live entities.
+// Follow-up: change `edicts: EdictT[]` to `edicts: Edict[]` in both
+// src/game/game.ts and src/ctf/game.ts (Edict is already what every
+// consumer's actual field access needs) to close this gap.
+function adaptCtfGameExports(ctfGe: CtfGameExports): GameExports {
+  return {
+    apiversion: ctfGe.apiversion,
+    Init: () => ctfGe.Init(),
+    Shutdown: () => ctfGe.Shutdown(),
+    SpawnEntities: (mapname, entstring, spawnpoint) => ctfGe.SpawnEntities(mapname, entstring, spawnpoint),
+    WriteGame: (filename, autosave) => ctfGe.WriteGame(filename, autosave),
+    ReadGame: (filename) => ctfGe.ReadGame(filename),
+    WriteLevel: (filename) => ctfGe.WriteLevel(filename),
+    ReadLevel: (filename) => ctfGe.ReadLevel(filename),
+    ClientConnect: (ent, userinfo) => ctfGe.ClientConnect(ent, userinfo),
+    ClientBegin: (ent) => ctfGe.ClientBegin(ent),
+    ClientUserinfoChanged: (ent, userinfo) => ctfGe.ClientUserinfoChanged(ent, userinfo),
+    ClientDisconnect: (ent) => ctfGe.ClientDisconnect(ent),
+    ClientCommand: (ent) => ctfGe.ClientCommand(ent),
+    ClientThink: (ent, cmd) => ctfGe.ClientThink(ent, cmd),
+    RunFrame: () => ctfGe.RunFrame(),
+    ServerCommand: () => ctfGe.ServerCommand(),
+    // live delegation: ctf's InitGame mutates its own GameExports object
+    // in place (globals identity trick); getters keep this adapter current.
+    get edicts() {
+      return ctfGe.edicts;
+    },
+    get num_edicts() {
+      return ctfGe.num_edicts;
+    },
+    set num_edicts(v: number) {
+      ctfGe.num_edicts = v;
+    },
+    get max_edicts() {
+      return ctfGe.max_edicts;
+    },
+    set max_edicts(v: number) {
+      ctfGe.max_edicts = v;
+    },
+  };
+}
 
 /*
 ===============
@@ -349,7 +434,18 @@ export function SV_InitGameProgs(): void {
     AreasConnected: CM_AreasConnected,
   };
 
-  const ge = GetGameAPI(importsObj);
+  // Runtime game-track selection: the C engine loads gamex86.dll (or the
+  // platform equivalent) out of the directory named by the "game" cvar
+  // (FS_Gamedir()) -- there is no DLL to load in this port, so the "game"
+  // cvar instead picks which statically-imported GetGameAPI to call.
+  // `importsObj`'s type (src/game/game.ts's GameImports) is structurally
+  // identical to src/ctf/game.ts's GameImports (verified: `diff
+  // src/game/game.ts src/ctf/game.ts` adds only the SVF_PROJECTILE constant,
+  // no interface-shape change) and both only take the shared, track-agnostic
+  // `Edict` type as parameters, so passing it to CTF_GetGameAPI needs no
+  // cast. Its GameExports return does NOT assign back structurally (see
+  // adaptCtfGameExports's comment above) -- bridged through that adapter.
+  const ge = Cvar_VariableString("game") === "ctf" ? adaptCtfGameExports(CTF_GetGameAPI(importsObj)) : GetGameAPI(importsObj);
 
   if (ge.apiversion !== GAME_API_VERSION) {
     Com_Error(ERR_DROP, "game is version %i, not %i", ge.apiversion, GAME_API_VERSION);

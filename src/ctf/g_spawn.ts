@@ -11,6 +11,7 @@ import {
   CS_SKYAXIS,
   CS_SKYROTATE,
   CS_STATUSBAR,
+  CVAR_SERVERINFO,
   MAX_QPATH,
   Q_stricmp,
 } from "../shared/q_shared";
@@ -134,34 +135,34 @@ import {
   SP_target_splash,
   SP_target_temp_entity,
 } from "./g_target";
-import { SP_turret_base, SP_turret_breach, SP_turret_driver } from "./g_turret";
-import { SP_misc_actor, SP_target_actor } from "./m_actor";
-import { SP_misc_insane } from "./m_insane";
-import { SP_monster_berserk } from "./m_berserk";
-import { SP_monster_gladiator } from "./m_gladiator";
-import { SP_monster_gunner } from "./m_gunner";
-import { SP_monster_infantry } from "./m_infantry";
-import { SP_monster_soldier, SP_monster_soldier_light, SP_monster_soldier_ss } from "./m_soldier";
-import { SP_monster_tank } from "./m_tank";
-import { SP_monster_medic } from "./m_medic";
-import { SP_monster_flipper } from "./m_flipper";
-import { SP_monster_chick } from "./m_chick";
-import { SP_monster_parasite } from "./m_parasite";
-import { SP_monster_flyer } from "./m_flyer";
-import { SP_monster_brain } from "./m_brain";
-import { SP_monster_floater } from "./m_float";
-import { SP_monster_hover } from "./m_hover";
-import { SP_monster_mutant } from "./m_mutant";
-import { SP_monster_supertank } from "./m_supertank";
-import { SP_monster_boss2 } from "./m_boss2";
-import { SP_monster_boss3_stand } from "./m_boss3";
-import { SP_monster_jorg } from "./m_boss31";
+import {
+  CTFSpawn,
+  ctf_statusbar,
+  SP_info_player_team1,
+  SP_info_player_team2,
+  SP_info_teleport_destination,
+  SP_misc_ctf_banner,
+  SP_misc_ctf_small_banner,
+  SP_trigger_teleport,
+} from "./g_ctf";
 
 // gameCvars entries are `CvarT | null` until InitGame resolves them (see
 // g_main.ts's identical helper and comment). Mirrored locally here since
 // g_main.ts does not export it and this file needs the same "not resolved
 // yet reads as 0" behavior C gets for free from a live cvar_t pointer.
 function cvarNum(c: { value: number } | null): number {
+  return c === null ? 0 : c.value;
+}
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- g_ctf.ts registers this cvar in
+// CTFInit() but keeps the resulting CvarT reference module-local (per
+// .orch/decisions.tsv's g_ctf.ts cvar-ownership note, same pattern as
+// g_main.ts's ctfCvar()), so this file -- which only reads it -- re-fetches
+// the same cvar object via gi.cvar() at each read site. gi.cvar() is
+// idempotent (Cvar_Get semantics): once CTFInit() has registered "ctf",
+// every later gi.cvar("ctf", ...) call returns that same CvarT.
+function ctfCvar(): number {
+  const c = gi.cvar("ctf", "1", CVAR_SERVERINFO);
   return c === null ? 0 : c.value;
 }
 
@@ -355,6 +356,8 @@ const spawns: SpawnT[] = [
   { name: "info_player_deathmatch", spawn: SP_info_player_deathmatch },
   { name: "info_player_coop", spawn: SP_info_player_coop },
   { name: "info_player_intermission", spawn: SP_info_player_intermission },
+  { name: "info_player_team1", spawn: SP_info_player_team1 },
+  { name: "info_player_team2", spawn: SP_info_player_team2 },
 
   { name: "func_plat", spawn: SP_func_plat },
   { name: "func_button", spawn: SP_func_button },
@@ -398,7 +401,6 @@ const spawns: SpawnT[] = [
   { name: "target_crosslevel_target", spawn: SP_target_crosslevel_target },
   { name: "target_laser", spawn: SP_target_laser },
   { name: "target_help", spawn: SP_target_help },
-  { name: "target_actor", spawn: SP_target_actor },
   { name: "target_lightramp", spawn: SP_target_lightramp },
   { name: "target_earthquake", spawn: SP_target_earthquake },
   { name: "target_character", spawn: SP_target_character },
@@ -418,12 +420,12 @@ const spawns: SpawnT[] = [
 
   { name: "misc_explobox", spawn: SP_misc_explobox },
   { name: "misc_banner", spawn: SP_misc_banner },
+  { name: "misc_ctf_banner", spawn: SP_misc_ctf_banner },
+  { name: "misc_ctf_small_banner", spawn: SP_misc_ctf_small_banner },
   { name: "misc_satellite_dish", spawn: SP_misc_satellite_dish },
-  { name: "misc_actor", spawn: SP_misc_actor },
   { name: "misc_gib_arm", spawn: SP_misc_gib_arm },
   { name: "misc_gib_leg", spawn: SP_misc_gib_leg },
   { name: "misc_gib_head", spawn: SP_misc_gib_head },
-  { name: "misc_insane", spawn: SP_misc_insane },
   { name: "misc_deadsoldier", spawn: SP_misc_deadsoldier },
   { name: "misc_viper", spawn: SP_misc_viper },
   { name: "misc_viper_bomb", spawn: SP_misc_viper_bomb },
@@ -431,39 +433,12 @@ const spawns: SpawnT[] = [
   { name: "misc_strogg_ship", spawn: SP_misc_strogg_ship },
   { name: "misc_teleporter", spawn: SP_misc_teleporter },
   { name: "misc_teleporter_dest", spawn: SP_misc_teleporter_dest },
+  { name: "trigger_teleport", spawn: SP_trigger_teleport },
+  { name: "info_teleport_destination", spawn: SP_info_teleport_destination },
   { name: "misc_blackhole", spawn: SP_misc_blackhole },
   { name: "misc_eastertank", spawn: SP_misc_eastertank },
   { name: "misc_easterchick", spawn: SP_misc_easterchick },
   { name: "misc_easterchick2", spawn: SP_misc_easterchick2 },
-
-  { name: "monster_berserk", spawn: SP_monster_berserk },
-  { name: "monster_gladiator", spawn: SP_monster_gladiator },
-  { name: "monster_gunner", spawn: SP_monster_gunner },
-  { name: "monster_infantry", spawn: SP_monster_infantry },
-  { name: "monster_soldier_light", spawn: SP_monster_soldier_light },
-  { name: "monster_soldier", spawn: SP_monster_soldier },
-  { name: "monster_soldier_ss", spawn: SP_monster_soldier_ss },
-  { name: "monster_tank", spawn: SP_monster_tank },
-  { name: "monster_tank_commander", spawn: SP_monster_tank },
-  { name: "monster_medic", spawn: SP_monster_medic },
-  { name: "monster_flipper", spawn: SP_monster_flipper },
-  { name: "monster_chick", spawn: SP_monster_chick },
-  { name: "monster_parasite", spawn: SP_monster_parasite },
-  { name: "monster_flyer", spawn: SP_monster_flyer },
-  { name: "monster_brain", spawn: SP_monster_brain },
-  { name: "monster_floater", spawn: SP_monster_floater },
-  { name: "monster_hover", spawn: SP_monster_hover },
-  { name: "monster_mutant", spawn: SP_monster_mutant },
-  { name: "monster_supertank", spawn: SP_monster_supertank },
-  { name: "monster_boss2", spawn: SP_monster_boss2 },
-  { name: "monster_boss3_stand", spawn: SP_monster_boss3_stand },
-  { name: "monster_jorg", spawn: SP_monster_jorg },
-
-  { name: "monster_commander_body", spawn: SP_monster_commander_body },
-
-  { name: "turret_breach", spawn: SP_turret_breach },
-  { name: "turret_base", spawn: SP_turret_base },
-  { name: "turret_driver", spawn: SP_turret_driver },
 ];
 
 /*
@@ -660,6 +635,8 @@ export function SpawnEntities(mapname: string, entities: string, spawnpoint: str
   G_FindTeams();
 
   PlayerTrail_Init();
+
+  CTFSpawn();
 }
 
 //===================================================================
@@ -764,15 +741,7 @@ const dm_statusbar =
   //  frags
   "xr\t-50 " +
   "yt 2 " +
-  "num 3 14 " +
-  // spectator
-  "if 17 " +
-  'xv 0 yb -58 string2 "SPECTATOR MODE" ' +
-  "endif " +
-  // chase camera
-  "if 16 " +
-  'xv 0 yb -68 string "Chasing" xv 64 stat_string 16 ' +
-  "endif ";
+  "num 3 14";
 
 /*QUAKED worldspawn (0 0 0) ?
 
@@ -825,7 +794,19 @@ export function SP_worldspawn(ent: EdictT): void {
 
   // status bar program
   if (cvarNum(gameCvars.deathmatch) !== 0) {
-    gi.configstring(CS_STATUSBAR, dm_statusbar);
+    if (ctfCvar() !== 0) {
+      gi.configstring(CS_STATUSBAR, ctf_statusbar);
+      // precaches
+      gi.imageindex("i_ctf1");
+      gi.imageindex("i_ctf2");
+      gi.imageindex("i_ctf1d");
+      gi.imageindex("i_ctf2d");
+      gi.imageindex("i_ctf1t");
+      gi.imageindex("i_ctf2t");
+      gi.imageindex("i_ctfj");
+    } else {
+      gi.configstring(CS_STATUSBAR, dm_statusbar);
+    }
   } else {
     gi.configstring(CS_STATUSBAR, single_statusbar);
   }
@@ -878,20 +859,9 @@ export function SP_worldspawn(ent: EdictT): void {
   gi.soundindex("*pain100_1.wav");
   gi.soundindex("*pain100_2.wav");
 
-  // sexed models
-  // THIS ORDER MUST MATCH THE DEFINES IN g_local.h
-  // you can add more, max 15
-  gi.modelindex("#w_blaster.md2");
-  gi.modelindex("#w_shotgun.md2");
-  gi.modelindex("#w_sshotgun.md2");
-  gi.modelindex("#w_machinegun.md2");
-  gi.modelindex("#w_chaingun.md2");
-  gi.modelindex("#a_grenades.md2");
-  gi.modelindex("#w_glauncher.md2");
-  gi.modelindex("#w_rlauncher.md2");
-  gi.modelindex("#w_hyperblaster.md2");
-  gi.modelindex("#w_railgun.md2");
-  gi.modelindex("#w_bfg.md2");
+  // sexed-models precache block dropped: ctf/g_spawn.c wraps this whole
+  // block (plus its own "#w_grapple.md2" line) in `#if 0 //DISABLED`, per
+  // PORTING.md's #if 0 ruling.
 
   //-------------------
 

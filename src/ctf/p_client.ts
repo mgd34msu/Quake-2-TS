@@ -9,6 +9,7 @@ import { vec3, type Vec3, VectorClear, VectorCopy, VectorLength, VectorSubtract 
 import {
   ANGLE2SHORT,
   type CvarT,
+  CVAR_SERVERINFO,
   type EntityStateT,
   EntityEventT,
   Info_SetValueForKey,
@@ -17,6 +18,7 @@ import {
   MASK_DEADSOLID,
   MASK_PLAYERSOLID,
   MAX_INFO_STRING,
+  MAX_ITEMS,
   MulticastT,
   MZ_LOGIN,
   MZ_LOGOUT,
@@ -26,7 +28,6 @@ import {
   PmoveStateT,
   PmoveT,
   PMF_DUCKED,
-  PMF_JUMP_HELD,
   PMF_NO_PREDICTION,
   PMF_TIME_TELEPORT,
   PRINT_HIGH,
@@ -85,6 +86,7 @@ import {
   MOD_HANDGRENADE,
   MOD_HELD_GRENADE,
   MOD_HG_SPLASH,
+  MOD_GRAPPLE,
   MOD_HYPERBLASTER,
   MOD_LAVA,
   MOD_MACHINEGUN,
@@ -110,19 +112,32 @@ import {
   level,
   meansOfDeathHolder,
   svc_muzzleflash,
-  svc_stufftext,
   world,
 } from "./g_local";
 import { G_Find, G_FreeEdict, G_InitEdict, G_Spawn, G_TouchTriggers, KillBox } from "./g_utils";
 import { SP_misc_teleporter_dest, ThrowClientHead, ThrowGib } from "./g_misc";
-import { Drop_Item, FindItem, FindItemByClassname, ITEM_INDEX, Touch_Item, itemlist } from "./g_items";
+import { Drop_Item, FindItem, FindItemByClassname, ITEM_INDEX, itemlist, Touch_Item } from "./g_items";
 import { visible } from "./g_ai";
-import { ChaseNext, GetChaseTarget, UpdateChaseCam } from "./g_chase";
+import { UpdateChaseCam } from "./g_chase";
 import { PlayerTrail_Add, PlayerTrail_LastSpot } from "./p_trail";
 import { ChangeWeapon, PlayerNoise, Think_Weapon } from "./p_weapon";
 import { ClientEndServerFrame } from "./p_view";
 import { MoveClientToIntermission } from "./p_hud";
-import { SV_FilterPacket } from "./g_svcmds";
+import {
+  CtfTeamT,
+  CTFApplyRegeneration,
+  CTFAssignSkin,
+  CTFAssignTeam,
+  CTFDeadDropFlag,
+  CTFDeadDropTech,
+  CTFFragBonuses,
+  CTFGrapplePull,
+  CTFMatchOn,
+  CTFPlayerResetGrapple,
+  CTFStartClient,
+  SelectCTFSpawnPoint,
+} from "./g_ctf";
+import { PMenu_Do_Update } from "./p_menu";
 import {
   FRAME_crdeath1,
   FRAME_crdeath5,
@@ -133,6 +148,23 @@ import {
   FRAME_death301,
   FRAME_death308,
 } from "./m_player_frames";
+
+// `ctf/g_ctf.h` declares `extern cvar_t *ctf;`, pulled into every ctf-track
+// file via g_local.h's trailing `#include "g_ctf.h"`, so every file shares
+// one cvar pointer. g_ctf.ts (out of this unit's SCOPE) keeps that cvar as a
+// module-private `let ctf`, not re-exported, so this file resolves its own
+// handle to the same underlying "ctf" cvar via gi.cvar() with the identical
+// name/default/flags g_ctf.ts's CTFInit uses -- the engine's cvar registry
+// (Cvar_Get semantics) hands back the same CvarT object regardless of which
+// file asks for it by name, so this reads the live, shared value. Reported
+// as a follow-up: move `ctf` into gameCvars in g_local.ts alongside
+// capturelimit/instantweap so every ctf-track file reads one place instead
+// of each re-resolving it.
+let ctfCvar: CvarT | null = null;
+function ctfEnabled(): boolean {
+  if (ctfCvar === null) ctfCvar = gi.cvar("ctf", "1", CVAR_SERVERINFO);
+  return ctfCvar !== null && ctfCvar.value !== 0;
+}
 
 // gameCvars entries are `CvarT | null` until InitGame resolves them via
 // gi.cvar() (see g_local.ts's gameCvars comment); this pair of helpers is
@@ -399,14 +431,8 @@ export function player_pain(_self: EdictT, _other: EdictT, _kick: number, _damag
 
 function IsFemale(ent: EdictT): boolean {
   if (ent.client === null) return false;
-  const info = Info_ValueForKey(ent.client.pers.userinfo, "gender");
+  const info = Info_ValueForKey(ent.client.pers.userinfo, "skin");
   return info[0] === "f" || info[0] === "F";
-}
-
-function IsNeutral(ent: EdictT): boolean {
-  if (ent.client === null) return false;
-  const info = Info_ValueForKey(ent.client.pers.userinfo, "gender");
-  return info[0] !== "f" && info[0] !== "F" && info[0] !== "m" && info[0] !== "M";
 }
 
 export function ClientObituary(self: EdictT, inflictor: EdictT, attacker: EdictT): void {
@@ -468,21 +494,18 @@ export function ClientObituary(self: EdictT, inflictor: EdictT, attacker: EdictT
           break;
         case MOD_HG_SPLASH:
         case MOD_G_SPLASH:
-          if (IsNeutral(self)) message = "tripped on its own grenade";
-          else if (IsFemale(self)) message = "tripped on her own grenade";
+          if (IsFemale(self)) message = "tripped on her own grenade";
           else message = "tripped on his own grenade";
           break;
         case MOD_R_SPLASH:
-          if (IsNeutral(self)) message = "blew itself up";
-          else if (IsFemale(self)) message = "blew herself up";
+          if (IsFemale(self)) message = "blew herself up";
           else message = "blew himself up";
           break;
         case MOD_BFG_BLAST:
           message = "should have used a smaller gun";
           break;
         default:
-          if (IsNeutral(self)) message = "killed itself";
-          else if (IsFemale(self)) message = "killed herself";
+          if (IsFemale(self)) message = "killed herself";
           else message = "killed himself";
           break;
       }
@@ -565,6 +588,10 @@ export function ClientObituary(self: EdictT, inflictor: EdictT, attacker: EdictT
         case MOD_TELEFRAG:
           message = "tried to invade";
           message2 = "'s personal space";
+          break;
+        case MOD_GRAPPLE:
+          message = "was caught by";
+          message2 = "'s grapple";
           break;
       }
       if (message !== null) {
@@ -665,6 +692,7 @@ export function player_die(self: EdictT, inflictor: EdictT, attacker: EdictT, da
   self.movetype = MovetypeT.MOVETYPE_TOSS;
 
   self.s.modelindex2 = 0; // remove linked weapon model
+  self.s.modelindex3 = 0; // remove linked ctf flag
 
   self.s.angles[0] = 0;
   self.s.angles[2] = 0;
@@ -684,22 +712,27 @@ export function player_die(self: EdictT, inflictor: EdictT, attacker: EdictT, da
       self.client.ps.pmove.pm_type = PmTypeT.PM_DEAD;
     }
     ClientObituary(self, inflictor, attacker);
-    TossClientWeapon(self);
-    if (cvarNum(gameCvars.deathmatch) !== 0) Cmd_Help_f(self); // show scores
 
-    // clear inventory
-    // this is kind of ugly, but it's how we want to handle keys in coop
-    if (self.client !== null) {
-      const items = itemlist();
-      for (let n = 0; n < game.num_items; n++) {
-        if (cvarNum(gameCvars.coop) !== 0) {
-          const it = items[n];
-          if (it !== undefined && (it.flags & IT_KEY) !== 0) {
-            self.client.resp.coop_respawn.inventory[n] = self.client.pers.inventory[n];
-          }
-        }
-        self.client.pers.inventory[n] = 0;
-      }
+    // if at start and same team, clear
+    if (
+      self.client !== null &&
+      ctfEnabled() &&
+      meansOfDeathHolder.meansOfDeath === MOD_TELEFRAG &&
+      self.client.resp.ctf_state < 2 &&
+      attacker.client !== null &&
+      self.client.resp.ctf_team === attacker.client.resp.ctf_team
+    ) {
+      attacker.client.resp.score--;
+      self.client.resp.ctf_state = 0;
+    }
+
+    CTFFragBonuses(self, inflictor, attacker);
+    TossClientWeapon(self);
+    CTFPlayerResetGrapple(self);
+    CTFDeadDropFlag(self);
+    CTFDeadDropTech(self);
+    if (cvarNum(gameCvars.deathmatch) !== 0 && self.client !== null && !self.client.showscores) {
+      Cmd_Help_f(self); // show scores
     }
   }
 
@@ -709,8 +742,10 @@ export function player_die(self: EdictT, inflictor: EdictT, attacker: EdictT, da
     self.client.invincible_framenum = 0;
     self.client.breather_framenum = 0;
     self.client.enviro_framenum = 0;
+
+    // clear inventory
+    self.client.pers.inventory.fill(0);
   }
-  self.flags &= ~FL_POWER_ARMOR;
 
   if (self.health < -40) {
     // gib
@@ -719,6 +754,10 @@ export function player_die(self: EdictT, inflictor: EdictT, attacker: EdictT, da
       ThrowGib(self, "models/objects/gibs/sm_meat/tris.md2", damage, GIB_ORGANIC);
     }
     ThrowClientHead(self, damage);
+    if (self.client !== null) {
+      self.client.anim_priority = ANIM_DEATH;
+      self.client.anim_end = 0;
+    }
 
     self.takedamage = DamageT.DAMAGE_NO;
   } else {
@@ -784,6 +823,10 @@ export function InitClientPersistant(client: GClientT): void {
   client.pers.inventory[client.pers.selected_item] = 1;
 
   client.pers.weapon = item;
+  client.pers.lastweapon = item;
+
+  const grapple = requireItem(FindItem("Grapple"));
+  client.pers.inventory[ITEM_INDEX(grapple)] = 1;
 
   client.pers.health = 100;
   client.pers.max_health = 100;
@@ -799,9 +842,20 @@ export function InitClientPersistant(client: GClientT): void {
 }
 
 export function InitClientResp(client: GClientT): void {
+  const ctf_team = client.resp.ctf_team;
+  const id_state = client.resp.id_state;
+
   client.resp = new ClientRespawnT();
+
+  client.resp.ctf_team = ctf_team;
+  client.resp.id_state = id_state;
+
   client.resp.enterframe = level.framenum;
   client.resp.coop_respawn = cloneClientPersistant(client.pers);
+
+  if (ctfEnabled() && client.resp.ctf_team < CtfTeamT.CTF_TEAM1) {
+    CTFAssignTeam(client);
+  }
 }
 
 /*
@@ -996,7 +1050,8 @@ export function SelectSpawnPoint(ent: EdictT, origin: Vec3, angles: Vec3): void 
   let spot: EdictT | null = null;
 
   if (cvarNum(gameCvars.deathmatch) !== 0) {
-    spot = SelectDeathmatchSpawnPoint();
+    if (ctfEnabled()) spot = SelectCTFSpawnPoint(ent);
+    else spot = SelectDeathmatchSpawnPoint();
   } else if (cvarNum(gameCvars.coop) !== 0) {
     spot = SelectCoopSpawnPoint(ent);
   }
@@ -1081,7 +1136,6 @@ export function CopyToBodyQue(ent: EdictT): void {
 
 export function respawn(self: EdictT): void {
   if (cvarNum(gameCvars.deathmatch) !== 0 || cvarNum(gameCvars.coop) !== 0) {
-    // spectator's don't leave bodies
     if (self.movetype !== MovetypeT.MOVETYPE_NOCLIP) {
       CopyToBodyQue(self);
     }
@@ -1104,86 +1158,6 @@ export function respawn(self: EdictT): void {
 
   // restart the entire server
   gi.AddCommandString("menu_loadgame\n");
-}
-
-/*
- * only called when pers.spectator changes
- * note that resp.spectator should be the opposite of pers.spectator here
- */
-function spectator_respawn(ent: EdictT): void {
-  const client = ent.client;
-  if (client === null) return;
-
-  // if the user wants to become a spectator, make sure he doesn't
-  // exceed max_spectators
-  if (client.pers.spectator) {
-    const value = Info_ValueForKey(client.pers.userinfo, "spectator");
-    const specPass = cvarStr(gameCvars.spectator_password);
-    if (specPass.length > 0 && specPass !== "none" && specPass !== value) {
-      gi.cprintf(ent, PRINT_HIGH, "Spectator password incorrect.\n");
-      client.pers.spectator = false;
-      gi.WriteByte(svc_stufftext);
-      gi.WriteString("spectator 0\n");
-      gi.unicast(ent, true);
-      return;
-    }
-
-    // count spectators
-    let numspec = 0;
-    const maxclients = cvarNum(gameCvars.maxclients);
-    for (let i = 1; i <= maxclients; i++) {
-      const e = g_edicts[i];
-      if (e !== undefined && e.inuse && e.client !== null && e.client.pers.spectator) numspec++;
-    }
-
-    if (numspec >= cvarNum(gameCvars.maxspectators)) {
-      gi.cprintf(ent, PRINT_HIGH, "Server spectator limit is full.");
-      client.pers.spectator = false;
-      // reset his spectator var
-      gi.WriteByte(svc_stufftext);
-      gi.WriteString("spectator 0\n");
-      gi.unicast(ent, true);
-      return;
-    }
-  } else {
-    // he was a spectator and wants to join the game
-    // he must have the right password
-    const value = Info_ValueForKey(client.pers.userinfo, "password");
-    const pass = cvarStr(gameCvars.password);
-    if (pass.length > 0 && pass !== "none" && pass !== value) {
-      gi.cprintf(ent, PRINT_HIGH, "Password incorrect.\n");
-      client.pers.spectator = true;
-      gi.WriteByte(svc_stufftext);
-      gi.WriteString("spectator 1\n");
-      gi.unicast(ent, true);
-      return;
-    }
-  }
-
-  // clear score on respawn
-  client.pers.score = 0;
-  client.resp.score = 0;
-
-  ent.svflags &= ~SVF_NOCLIENT;
-  PutClientInServer(ent);
-
-  // add a teleportation effect
-  if (!client.pers.spectator) {
-    // send effect
-    gi.WriteByte(svc_muzzleflash);
-    gi.WriteShort(ent.s.number);
-    gi.WriteByte(MZ_LOGIN);
-    gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
-
-    // hold in place briefly
-    client.ps.pmove.pm_flags = PMF_TIME_TELEPORT;
-    client.ps.pmove.pm_time = 14;
-  }
-
-  client.respawn_time = level.time;
-
-  if (client.pers.spectator) gi.bprintf(PRINT_HIGH, `${client.pers.netname} has moved to the sidelines\n`);
-  else gi.bprintf(PRINT_HIGH, `${client.pers.netname} joined the game\n`);
 }
 
 //==============================================================
@@ -1224,8 +1198,13 @@ export function PutClientInServer(ent: EdictT): void {
     resp = client.resp;
     const userinfo = client.pers.userinfo;
     // this is kind of ugly, but it's how we want to handle keys in coop
-    resp.coop_respawn.game_helpchanged = client.pers.game_helpchanged;
-    resp.coop_respawn.helpchanged = client.pers.helpchanged;
+    const items = itemlist();
+    for (let n = 0; n < MAX_ITEMS; n++) {
+      const it = items[n];
+      if (it !== undefined && (it.flags & IT_KEY) !== 0) {
+        resp.coop_respawn.inventory[n] = client.pers.inventory[n];
+      }
+    }
     client.pers = cloneClientPersistant(resp.coop_respawn);
     ClientUserinfoChanged(ent, userinfo);
     if (resp.score > client.pers.score) client.pers.score = resp.score;
@@ -1274,6 +1253,7 @@ export function PutClientInServer(ent: EdictT): void {
   client.ps.pmove.origin[0] = spawn_origin[0] * 8;
   client.ps.pmove.origin[1] = spawn_origin[1] * 8;
   client.ps.pmove.origin[2] = spawn_origin[2] * 8;
+  client.ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
 
   if (cvarNum(gameCvars.deathmatch) !== 0 && ((cvarNum(gameCvars.dmflags) | 0) & DF_FIXED_FOV) !== 0) {
     client.ps.fov = 90;
@@ -1290,6 +1270,7 @@ export function PutClientInServer(ent: EdictT): void {
 
   // clear entity state values
   ent.s.effects = 0;
+  ent.s.skinnum = ent.s.number - 1;
   ent.s.modelindex = 255; // will use the skin specified model
   ent.s.modelindex2 = 255; // custom gun model
   // sknum is player num and weapon number
@@ -1312,20 +1293,7 @@ export function PutClientInServer(ent: EdictT): void {
   VectorCopy(ent.s.angles, client.ps.viewangles);
   VectorCopy(ent.s.angles, client.v_angle);
 
-  // spawn a spectator
-  if (client.pers.spectator) {
-    client.chase_target = null;
-
-    client.resp.spectator = true;
-
-    ent.movetype = MovetypeT.MOVETYPE_NOCLIP;
-    ent.solid = SolidT.SOLID_NOT;
-    ent.svflags |= SVF_NOCLIENT;
-    client.ps.gunindex = 0;
-    gi.linkentity(ent);
-    return;
-  }
-  client.resp.spectator = false;
+  if (CTFStartClient(ent)) return;
 
   if (!KillBox(ent)) {
     // couldn't spawn in?
@@ -1449,22 +1417,17 @@ export function ClientUserinfoChanged(entIn: Edict, userinfoIn: string): void {
   let s = Info_ValueForKey(userinfo, "name");
   client.pers.netname = s.slice(0, 15); // char[16], sizeof(netname)-1
 
-  // set spectator
-  s = Info_ValueForKey(userinfo, "spectator");
-  // spectators are only supported in deathmatch
-  if (cvarNum(gameCvars.deathmatch) !== 0 && s.length > 0 && s !== "0") {
-    client.pers.spectator = true;
-  } else {
-    client.pers.spectator = false;
-  }
-
   // set skin
   s = Info_ValueForKey(userinfo, "skin");
 
   const playernum = ent.s.number - 1;
 
   // combine name and skin into a configstring
-  gi.configstring(CS_PLAYERSKINS + playernum, `${client.pers.netname}\\${s}`);
+  if (ctfEnabled()) {
+    CTFAssignSkin(ent, s);
+  } else {
+    gi.configstring(CS_PLAYERSKINS + playernum, `${client.pers.netname}\\${s}`);
+  }
 
   // fov
   if (cvarNum(gameCvars.deathmatch) !== 0 && ((cvarNum(gameCvars.dmflags) | 0) & DF_FIXED_FOV) !== 0) {
@@ -1503,40 +1466,13 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
 
   // check to see if they are on the banned IP list
   let value = Info_ValueForKey(userinfo, "ip");
-  if (SV_FilterPacket(value)) {
-    userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Banned.");
+
+  // check for a password
+  value = Info_ValueForKey(userinfo, "password");
+  const pass = cvarStr(gameCvars.password);
+  if (pass.length > 0 && pass !== "none" && pass !== value) {
+    userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Password required or incorrect.");
     return { allowed: false, userinfo };
-  }
-
-  // check for a spectator
-  value = Info_ValueForKey(userinfo, "spectator");
-  if (cvarNum(gameCvars.deathmatch) !== 0 && value.length > 0 && value !== "0") {
-    const specPass = cvarStr(gameCvars.spectator_password);
-    if (specPass.length > 0 && specPass !== "none" && specPass !== value) {
-      userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Spectator password required or incorrect.");
-      return { allowed: false, userinfo };
-    }
-
-    // count spectators
-    let numspec = 0;
-    const maxclients = cvarNum(gameCvars.maxclients);
-    for (let i = 0; i < maxclients; i++) {
-      const e = g_edicts[i + 1];
-      if (e !== undefined && e.inuse && e.client !== null && e.client.pers.spectator) numspec++;
-    }
-
-    if (numspec >= cvarNum(gameCvars.maxspectators)) {
-      userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Server spectator limit is full.");
-      return { allowed: false, userinfo };
-    }
-  } else {
-    // check for a password
-    value = Info_ValueForKey(userinfo, "password");
-    const pass = cvarStr(gameCvars.password);
-    if (pass.length > 0 && pass !== "none" && pass !== value) {
-      userinfo = Info_SetValueForKey(userinfo, "rejmsg", "Password required or incorrect.");
-      return { allowed: false, userinfo };
-    }
   }
 
   // they can connect
@@ -1547,6 +1483,9 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
   // take it, otherwise spawn one from scratch
   if (ent.inuse === false) {
     // clear the respawning variables
+    // force team join
+    client.resp.ctf_team = -1;
+    client.resp.id_state = false;
     InitClientResp(client);
     if (!game.autosaved || client.pers.weapon === null) InitClientPersistant(client);
   }
@@ -1574,6 +1513,9 @@ export function ClientDisconnect(entIn: Edict): void {
   if (ent.client === null) return;
 
   gi.bprintf(PRINT_HIGH, `${ent.client.pers.netname} disconnected\n`);
+
+  CTFDeadDropFlag(ent);
+  CTFDeadDropTech(ent);
 
   // send effect
   gi.WriteByte(svc_muzzleflash);
@@ -1645,91 +1587,94 @@ export function ClientThink(entIn: Edict, ucmd: UsercmdT): void {
     client.resp.cmd_angles[0] = SHORT2ANGLE(ucmd.angles[0]);
     client.resp.cmd_angles[1] = SHORT2ANGLE(ucmd.angles[1]);
     client.resp.cmd_angles[2] = SHORT2ANGLE(ucmd.angles[2]);
+    return;
+  }
+
+  // set up for pmove
+  const pm = new PmoveT();
+
+  if (ent.movetype === MovetypeT.MOVETYPE_NOCLIP) client.ps.pmove.pm_type = PmTypeT.PM_SPECTATOR;
+  else if (ent.s.modelindex !== 255) client.ps.pmove.pm_type = PmTypeT.PM_GIB;
+  else if (ent.deadflag !== DEAD_NO) client.ps.pmove.pm_type = PmTypeT.PM_DEAD;
+  else client.ps.pmove.pm_type = PmTypeT.PM_NORMAL;
+
+  client.ps.pmove.gravity = cvarNum(gameCvars.sv_gravity);
+  // C: `pm.s = client->ps.pmove;` -- struct value copy; see clonePmoveState.
+  pm.s = clonePmoveState(client.ps.pmove);
+
+  for (let i = 0; i < 3; i++) {
+    pm.s.origin[i] = ent.s.origin[i] * 8;
+    pm.s.velocity[i] = ent.velocity[i] * 8;
+  }
+
+  if (!pmoveStateEqual(client.old_pmove, pm.s)) {
+    pm.snapinitial = true;
+  }
+
+  pm.cmd = ucmd;
+
+  pm.trace = PM_trace; // adds default parms
+  pm.pointcontents = gi.pointcontents;
+
+  // perform a pmove
+  gi.Pmove(pm);
+
+  // save results of pmove (two independent copies, matching C's by-value
+  // struct assignment -- see clonePmoveState's comment)
+  client.ps.pmove = clonePmoveState(pm.s);
+  client.old_pmove = clonePmoveState(pm.s);
+
+  for (let i = 0; i < 3; i++) {
+    ent.s.origin[i] = pm.s.origin[i] * 0.125;
+    ent.velocity[i] = pm.s.velocity[i] * 0.125;
+  }
+
+  VectorCopy(pm.mins, ent.mins);
+  VectorCopy(pm.maxs, ent.maxs);
+
+  client.resp.cmd_angles[0] = SHORT2ANGLE(ucmd.angles[0]);
+  client.resp.cmd_angles[1] = SHORT2ANGLE(ucmd.angles[1]);
+  client.resp.cmd_angles[2] = SHORT2ANGLE(ucmd.angles[2]);
+
+  const newGround = recoverEdict(pm.groundentity);
+  if (ent.groundentity !== null && newGround === null && pm.cmd.upmove >= 10 && pm.waterlevel === 0) {
+    gi.sound(ent, CHAN_VOICE, gi.soundindex("*jump1.wav"), 1, ATTN_NORM, 0);
+    PlayerNoise(ent, ent.s.origin, PNOISE_SELF);
+  }
+
+  ent.viewheight = pm.viewheight;
+  ent.waterlevel = pm.waterlevel;
+  ent.watertype = pm.watertype;
+  ent.groundentity = newGround;
+  if (newGround !== null) ent.groundentity_linkcount = newGround.linkcount;
+
+  if (ent.deadflag !== DEAD_NO) {
+    client.ps.viewangles[ROLL] = 40;
+    client.ps.viewangles[PITCH] = -15;
+    client.ps.viewangles[YAW] = client.killer_yaw;
   } else {
-    // set up for pmove
-    const pm = new PmoveT();
+    VectorCopy(pm.viewangles, client.v_angle);
+    VectorCopy(pm.viewangles, client.ps.viewangles);
+  }
 
-    if (ent.movetype === MovetypeT.MOVETYPE_NOCLIP) client.ps.pmove.pm_type = PmTypeT.PM_SPECTATOR;
-    else if (ent.s.modelindex !== 255) client.ps.pmove.pm_type = PmTypeT.PM_GIB;
-    else if (ent.deadflag !== DEAD_NO) client.ps.pmove.pm_type = PmTypeT.PM_DEAD;
-    else client.ps.pmove.pm_type = PmTypeT.PM_NORMAL;
+  if (client.ctf_grapple !== null) CTFGrapplePull(client.ctf_grapple);
 
-    client.ps.pmove.gravity = cvarNum(gameCvars.sv_gravity);
-    // C: `pm.s = client->ps.pmove;` -- struct value copy; see clonePmoveState.
-    pm.s = clonePmoveState(client.ps.pmove);
+  gi.linkentity(ent);
 
-    for (let i = 0; i < 3; i++) {
-      pm.s.origin[i] = ent.s.origin[i] * 8;
-      pm.s.velocity[i] = ent.velocity[i] * 8;
+  if (ent.movetype !== MovetypeT.MOVETYPE_NOCLIP) G_TouchTriggers(ent);
+
+  // touch other objects
+  for (let i = 0; i < pm.numtouch; i++) {
+    const otherRaw = pm.touchents[i];
+    let j = 0;
+    for (; j < i; j++) {
+      if (pm.touchents[j] === otherRaw) break;
     }
-
-    if (!pmoveStateEqual(client.old_pmove, pm.s)) {
-      pm.snapinitial = true;
-    }
-
-    pm.cmd = ucmd;
-
-    pm.trace = PM_trace; // adds default parms
-    pm.pointcontents = gi.pointcontents;
-
-    // perform a pmove
-    gi.Pmove(pm);
-
-    // save results of pmove (two independent copies, matching C's by-value
-    // struct assignment -- see clonePmoveState's comment)
-    client.ps.pmove = clonePmoveState(pm.s);
-    client.old_pmove = clonePmoveState(pm.s);
-
-    for (let i = 0; i < 3; i++) {
-      ent.s.origin[i] = pm.s.origin[i] * 0.125;
-      ent.velocity[i] = pm.s.velocity[i] * 0.125;
-    }
-
-    VectorCopy(pm.mins, ent.mins);
-    VectorCopy(pm.maxs, ent.maxs);
-
-    client.resp.cmd_angles[0] = SHORT2ANGLE(ucmd.angles[0]);
-    client.resp.cmd_angles[1] = SHORT2ANGLE(ucmd.angles[1]);
-    client.resp.cmd_angles[2] = SHORT2ANGLE(ucmd.angles[2]);
-
-    const newGround = recoverEdict(pm.groundentity);
-    if (ent.groundentity !== null && newGround === null && pm.cmd.upmove >= 10 && pm.waterlevel === 0) {
-      gi.sound(ent, CHAN_VOICE, gi.soundindex("*jump1.wav"), 1, ATTN_NORM, 0);
-      PlayerNoise(ent, ent.s.origin, PNOISE_SELF);
-    }
-
-    ent.viewheight = pm.viewheight;
-    ent.waterlevel = pm.waterlevel;
-    ent.watertype = pm.watertype;
-    ent.groundentity = newGround;
-    if (newGround !== null) ent.groundentity_linkcount = newGround.linkcount;
-
-    if (ent.deadflag !== DEAD_NO) {
-      client.ps.viewangles[ROLL] = 40;
-      client.ps.viewangles[PITCH] = -15;
-      client.ps.viewangles[YAW] = client.killer_yaw;
-    } else {
-      VectorCopy(pm.viewangles, client.v_angle);
-      VectorCopy(pm.viewangles, client.ps.viewangles);
-    }
-
-    gi.linkentity(ent);
-
-    if (ent.movetype !== MovetypeT.MOVETYPE_NOCLIP) G_TouchTriggers(ent);
-
-    // touch other objects
-    for (let i = 0; i < pm.numtouch; i++) {
-      const otherRaw = pm.touchents[i];
-      let j = 0;
-      for (; j < i; j++) {
-        if (pm.touchents[j] === otherRaw) break;
-      }
-      if (j !== i) continue; // duplicated
-      const other = recoverEdict(otherRaw);
-      if (other === null) continue;
-      if (other.touch === null) continue;
-      other.touch(other, ent, null, null);
-    }
+    if (j !== i) continue; // duplicated
+    const other = recoverEdict(otherRaw);
+    if (other === null) continue;
+    if (other.touch === null) continue;
+    other.touch(other, ent, null, null);
   }
 
   client.oldbuttons = client.buttons;
@@ -1741,41 +1686,29 @@ export function ClientThink(entIn: Edict, ucmd: UsercmdT): void {
   ent.light_level = ucmd.lightlevel;
 
   // fire weapon from final position if needed
-  if ((client.latched_buttons & BUTTON_ATTACK) !== 0) {
-    if (client.resp.spectator) {
-      client.latched_buttons = 0;
-
-      if (client.chase_target !== null) {
-        client.chase_target = null;
-        client.ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
-      } else {
-        GetChaseTarget(ent);
-      }
-    } else if (!client.weapon_thunk) {
+  if ((client.latched_buttons & BUTTON_ATTACK) !== 0 && ent.movetype !== MovetypeT.MOVETYPE_NOCLIP) {
+    if (!client.weapon_thunk) {
       client.weapon_thunk = true;
       Think_Weapon(ent);
     }
   }
 
-  if (client.resp.spectator) {
-    if (ucmd.upmove >= 10) {
-      if ((client.ps.pmove.pm_flags & PMF_JUMP_HELD) === 0) {
-        client.ps.pmove.pm_flags |= PMF_JUMP_HELD;
-        if (client.chase_target !== null) ChaseNext(ent);
-        else GetChaseTarget(ent);
-      }
-    } else {
-      client.ps.pmove.pm_flags &= ~PMF_JUMP_HELD;
-    }
-  }
+  // regen tech
+  CTFApplyRegeneration(ent);
 
-  // update chase cam if being followed
   const maxclients = cvarNum(gameCvars.maxclients);
   for (let i = 1; i <= maxclients; i++) {
     const other = g_edicts[i];
     if (other !== undefined && other.inuse && other.client !== null && other.client.chase_target === ent) {
       UpdateChaseCam(other);
     }
+  }
+
+  if (client.menudirty && client.menutime <= level.time) {
+    PMenu_Do_Update(ent);
+    gi.unicast(ent, true);
+    client.menutime = level.time;
+    client.menudirty = false;
   }
 }
 
@@ -1793,17 +1726,8 @@ export function ClientBeginServerFrame(ent: EdictT): void {
   if (ent.client === null) return; // defensive; C assumes ent->client is set
   const client = ent.client;
 
-  if (
-    cvarNum(gameCvars.deathmatch) !== 0 &&
-    client.pers.spectator !== client.resp.spectator &&
-    level.time - client.respawn_time >= 5
-  ) {
-    spectator_respawn(ent);
-    return;
-  }
-
   // run weapon animations if it hasn't been done by a ucmd_t
-  if (!client.weapon_thunk && !client.resp.spectator) Think_Weapon(ent);
+  if (!client.weapon_thunk && ent.movetype !== MovetypeT.MOVETYPE_NOCLIP) Think_Weapon(ent);
   else client.weapon_thunk = false;
 
   if (ent.deadflag !== DEAD_NO) {
@@ -1814,7 +1738,8 @@ export function ClientBeginServerFrame(ent: EdictT): void {
 
       if (
         (client.latched_buttons & buttonMask) !== 0 ||
-        (cvarNum(gameCvars.deathmatch) !== 0 && ((cvarNum(gameCvars.dmflags) | 0) & DF_FORCE_RESPAWN) !== 0)
+        (cvarNum(gameCvars.deathmatch) !== 0 && ((cvarNum(gameCvars.dmflags) | 0) & DF_FORCE_RESPAWN) !== 0) ||
+        CTFMatchOn()
       ) {
         respawn(ent);
         client.latched_buttons = 0;

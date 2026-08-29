@@ -257,7 +257,7 @@ export interface GameExports {
   // TypeScript arrays need no element stride, so this reshapes the
   // pointer+size pair into a plain array of full edicts; `edict_size` is
   // dropped entirely (reported per PORTING.md).
-  edicts: EdictT[];
+  edicts: Edict[];
   num_edicts: number; // current number, <= max_edicts
   max_edicts: number;
 }

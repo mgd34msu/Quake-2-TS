@@ -31,7 +31,6 @@ import {
   EF_ANIM23,
   EF_ANIM_ALL,
   EF_ANIM_ALLFAST,
-  EntityEventT,
   Q_stricmp,
 } from "../shared/q_shared";
 import { T_Damage } from "./g_combat";
@@ -1273,7 +1272,6 @@ function train_next(self: EdictT): void {
       first = false;
       VectorSubtract(ent.s.origin, self.mins, self.s.origin);
       VectorCopy(self.s.origin, self.s.old_origin);
-      self.s.event = EntityEventT.EV_OTHER_TELEPORT;
       gi.linkentity(self);
       continue; // goto again
     }

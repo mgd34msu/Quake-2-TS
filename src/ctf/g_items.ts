@@ -10,11 +10,15 @@ import {
   type CsurfaceT,
   type CvarT,
   CS_ITEMS,
+  CVAR_SERVERINFO,
   DF_INFINITE_AMMO,
   DF_INSTANT_ITEMS,
   DF_NO_ARMOR,
   DF_NO_HEALTH,
   DF_NO_ITEMS,
+  DF_WEAPONS_STAY,
+  EF_FLAG1,
+  EF_FLAG2,
   EF_GIB,
   EF_ROTATE,
   EntityEventT,
@@ -29,6 +33,7 @@ import {
 } from "../shared/q_shared";
 import { ValidateSelectedItem } from "./g_cmds";
 import { SolidT, SVF_NOCLIENT } from "./game";
+import { CTFDrop_Flag, CTFDrop_Tech, CTFFlagSetup, CTFHasRegeneration, CTFMatchSetup, CTFPickup_Flag, CTFPickup_Tech, CTFWeapon_Grapple } from "./g_ctf";
 import {
   AmmoT,
   ARMOR_BODY,
@@ -62,9 +67,11 @@ import {
   POWER_ARMOR_NONE,
   POWER_ARMOR_SCREEN,
   POWER_ARMOR_SHIELD,
+  IT_TECH,
   WEAP_BFG,
   WEAP_BLASTER,
   WEAP_CHAINGUN,
+  WEAP_GRAPPLE,
   WEAP_GRENADELAUNCHER,
   WEAP_GRENADES,
   WEAP_HYPERBLASTER,
@@ -96,6 +103,18 @@ import {
 // mirrors g_main.ts's own `cvarNum` (module-local there too, so not
 // reusable) rather than inventing a shared helper outside this file's SCOPE.
 function cvarNum(c: CvarT | null): number {
+  return c === null ? 0 : c.value;
+}
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- g_ctf.ts registers this cvar in
+// CTFInit() but keeps the resulting CvarT reference module-local (per
+// .orch/decisions.tsv's g_ctf.ts cvar-ownership note, same pattern as
+// g_main.ts's ctfCvar()), so this file -- which only reads it -- re-fetches
+// the same cvar object via gi.cvar() at each read site. gi.cvar() is
+// idempotent (Cvar_Get semantics): once CTFInit() has registered "ctf",
+// every later gi.cvar("ctf", ...) call returns that same CvarT.
+function ctfCvar(): number {
+  const c = gi.cvar("ctf", "1", CVAR_SERVERINFO);
   return c === null ? 0 : c.value;
 }
 
@@ -209,17 +228,29 @@ export function DoRespawn(ent: EdictT): void {
   if (target.team !== null) {
     const master = target.teammaster;
 
-    let count = 0;
-    let e: EdictT | null = master;
-    for (; e !== null; e = e.chain) count++;
+    // in ctf, when we are weapons stay, only the master of a team of
+    // weapons is spawned
+    if (
+      master !== null &&
+      ctfCvar() &&
+      (cvarNum(gameCvars.dmflags) & DF_WEAPONS_STAY) !== 0 &&
+      master.item !== null &&
+      (master.item.flags & IT_WEAPON) !== 0
+    ) {
+      target = master;
+    } else {
+      let count = 0;
+      let e: EdictT | null = master;
+      for (; e !== null; e = e.chain) count++;
 
-    // C: `choice = rand() % count;`
-    const choice = Math.floor(Math.random() * count);
+      // C: `choice = rand() % count;`
+      const choice = Math.floor(Math.random() * count);
 
-    let picked: EdictT | null = master;
-    let i = 0;
-    for (; i < choice && picked !== null; i++) picked = picked.chain;
-    if (picked !== null) target = picked;
+      let picked: EdictT | null = master;
+      let i = 0;
+      for (; i < choice && picked !== null; i++) picked = picked.chain;
+      if (picked !== null) target = picked;
+    }
   }
 
   target.svflags &= ~SVF_NOCLIENT;
@@ -560,17 +591,6 @@ export function Drop_Ammo(ent: EdictT, item: GItemT): void {
   if (client.pers.inventory[index] >= item.quantity) dropped.count = item.quantity;
   else dropped.count = client.pers.inventory[index];
 
-  if (
-    client.pers.weapon !== null &&
-    client.pers.weapon.tag === AmmoT.AMMO_GRENADES &&
-    item.tag === AmmoT.AMMO_GRENADES &&
-    client.pers.inventory[index] - dropped.count <= 0
-  ) {
-    gi.cprintf(ent, PRINT_HIGH, "Can't drop current weapon\n");
-    G_FreeEdict(dropped);
-    return;
-  }
-
   client.pers.inventory[index] -= dropped.count;
   ValidateSelectedItem(ent);
 }
@@ -579,7 +599,7 @@ export function Drop_Ammo(ent: EdictT, item: GItemT): void {
 
 function MegaHealth_think(self: EdictT): void {
   const owner = self.owner;
-  if (owner !== null && owner.health > owner.max_health) {
+  if (owner !== null && owner.health > owner.max_health && !CTFHasRegeneration(owner)) {
     self.nextthink = level.time + 1;
     owner.health -= 1;
     return;
@@ -594,13 +614,17 @@ export function Pickup_Health(ent: EdictT, other: EdictT): boolean {
     if (other.health >= other.max_health) return false;
   }
 
+  if (other.health >= 250 && ent.count > 25) return false;
+
   other.health += ent.count;
+
+  if (other.health > 250 && ent.count > 25) other.health = 250;
 
   if ((ent.style & HEALTH_IGNORE_MAX) === 0) {
     if (other.health > other.max_health) other.health = other.max_health;
   }
 
-  if ((ent.style & HEALTH_TIMED) !== 0) {
+  if ((ent.style & HEALTH_TIMED) !== 0 && !CTFHasRegeneration(other)) {
     ent.think = MegaHealth_think;
     ent.nextthink = level.time + 5;
     ent.owner = other;
@@ -759,6 +783,8 @@ export function Touch_Item(ent: EdictT, other: EdictT, plane: CplaneT | null, su
   if (other.health < 1) return; // dead people can't pickup
   const item = ent.item;
   if (item === null || item.pickup === null) return; // not a grabbable item?
+
+  if (CTFMatchSetup()) return; // can't pick stuff up right now
 
   const taken = item.pickup(ent, other);
 
@@ -1041,12 +1067,23 @@ export function SpawnItem(ent: EdictT, item: GItemT): void {
     item.drop = null;
   }
 
+  // don't spawn the flags unless enabled
+  if (!ctfCvar() && (ent.classname === "item_flag_team1" || ent.classname === "item_flag_team2")) {
+    G_FreeEdict(ent);
+    return;
+  }
+
   ent.item = item;
   ent.nextthink = level.time + 2 * FRAMETIME; // items start after other solids
   ent.think = droptofloor;
   ent.s.effects = item.world_model_flags;
   ent.s.renderfx = RF_GLOW;
   if (ent.model !== null) gi.modelindex(ent.model);
+
+  // flags are server animated and have special handling
+  if (ent.classname === "item_flag_team1" || ent.classname === "item_flag_team2") {
+    ent.think = CTFFlagSetup;
+  }
 }
 
 //======================================================================
@@ -1057,9 +1094,11 @@ function mkItem(fields: Partial<GItemT>): GItemT {
 
 // `gitem_t itemlist[]` -- transcribed in the exact order of the C array,
 // including index 0 ("leave index 0 alone") and the trailing `{NULL}`
-// end-of-list marker. 43 entries total; `InitItems` sets `game.num_items`
-// to `ITEMLIST.length - 1` exactly as the C `sizeof(itemlist)/sizeof(...)-1`
-// does.
+// end-of-list marker. 42 base entries (game.num_items before this unit's
+// delta) plus this unit's ctf/g_items.c delta (weapon_grapple,
+// item_flag_team1/2, item_tech1-4 = 7 entries) = 49 entries total;
+// `InitItems` sets `game.num_items` to `ITEMLIST.length - 1` exactly as the
+// C `sizeof(itemlist)/sizeof(...)-1` does.
 const ITEMLIST: GItemT[] = [
   mkItem({}), // leave index 0 alone
 
@@ -1176,6 +1215,23 @@ const ITEMLIST: GItemT[] = [
   //
   // WEAPONS
   //
+
+  /* weapon_grapple (.3 .3 1) (-16 -16 -16) (16 16 16)
+  always owned, never in the world
+  */
+  mkItem({
+    classname: "weapon_grapple",
+    use: Use_Weapon,
+    weaponthink: CTFWeapon_Grapple,
+    pickup_sound: "misc/w_pkup.wav",
+    view_model: "models/weapons/grapple/tris.md2",
+    icon: "w_grapple",
+    pickup_name: "Grapple",
+    flags: IT_WEAPON,
+    weapmodel: WEAP_GRAPPLE,
+    precaches:
+      "weapons/grapple/grfire.wav weapons/grapple/grpull.wav weapons/grapple/grhang.wav weapons/grapple/grreset.wav weapons/grapple/grhit.wav",
+  }),
 
   /* weapon_blaster (.3 .3 1) (-16 -16 -16) (16 16 16)
   always owned, never in the world
@@ -1825,6 +1881,96 @@ const ITEMLIST: GItemT[] = [
     pickup_name: "Health",
     count_width: 3,
     precaches: "items/s_health.wav items/n_health.wav items/l_health.wav items/m_health.wav",
+  }),
+
+  /*QUAKED item_flag_team1 (1 0.2 0) (-16 -16 -24) (16 16 32)
+   */
+  mkItem({
+    classname: "item_flag_team1",
+    pickup: CTFPickup_Flag,
+    drop: CTFDrop_Flag, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "ctf/flagtk.wav",
+    world_model: "players/male/flag1.md2",
+    world_model_flags: EF_FLAG1,
+    icon: "i_ctf1",
+    pickup_name: "Red Flag",
+    count_width: 2,
+    precaches: "ctf/flagcap.wav",
+  }),
+
+  /*QUAKED item_flag_team2 (1 0.2 0) (-16 -16 -24) (16 16 32)
+   */
+  mkItem({
+    classname: "item_flag_team2",
+    pickup: CTFPickup_Flag,
+    drop: CTFDrop_Flag, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "ctf/flagtk.wav",
+    world_model: "players/male/flag2.md2",
+    world_model_flags: EF_FLAG2,
+    icon: "i_ctf2",
+    pickup_name: "Blue Flag",
+    count_width: 2,
+    precaches: "ctf/flagcap.wav",
+  }),
+
+  /* Resistance Tech */
+  mkItem({
+    classname: "item_tech1",
+    pickup: CTFPickup_Tech,
+    drop: CTFDrop_Tech, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "items/pkup.wav",
+    world_model: "models/ctf/resistance/tris.md2",
+    world_model_flags: EF_ROTATE,
+    icon: "tech1",
+    pickup_name: "Disruptor Shield",
+    count_width: 2,
+    flags: IT_TECH,
+    precaches: "ctf/tech1.wav",
+  }),
+
+  /* Strength Tech */
+  mkItem({
+    classname: "item_tech2",
+    pickup: CTFPickup_Tech,
+    drop: CTFDrop_Tech, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "items/pkup.wav",
+    world_model: "models/ctf/strength/tris.md2",
+    world_model_flags: EF_ROTATE,
+    icon: "tech2",
+    pickup_name: "Power Amplifier",
+    count_width: 2,
+    flags: IT_TECH,
+    precaches: "ctf/tech2.wav ctf/tech2x.wav",
+  }),
+
+  /* Haste Tech */
+  mkItem({
+    classname: "item_tech3",
+    pickup: CTFPickup_Tech,
+    drop: CTFDrop_Tech, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "items/pkup.wav",
+    world_model: "models/ctf/haste/tris.md2",
+    world_model_flags: EF_ROTATE,
+    icon: "tech3",
+    pickup_name: "Time Accel",
+    count_width: 2,
+    flags: IT_TECH,
+    precaches: "ctf/tech3.wav",
+  }),
+
+  /* Regeneration Tech */
+  mkItem({
+    classname: "item_tech4",
+    pickup: CTFPickup_Tech,
+    drop: CTFDrop_Tech, //Should this be null if we don't want players to drop it manually?
+    pickup_sound: "items/pkup.wav",
+    world_model: "models/ctf/regeneration/tris.md2",
+    world_model_flags: EF_ROTATE,
+    icon: "tech4",
+    pickup_name: "AutoDoc",
+    count_width: 2,
+    flags: IT_TECH,
+    precaches: "ctf/tech4.wav",
   }),
 
   // end of list marker

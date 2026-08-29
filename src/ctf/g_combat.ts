@@ -18,6 +18,7 @@ import {
 import {
   ATTN_NORM,
   CHAN_ITEM,
+  CVAR_SERVERINFO,
   DF_MODELTEAMS,
   DF_NO_FRIENDLY_FIRE,
   DF_SKINTEAMS,
@@ -28,11 +29,11 @@ import {
 import { FoundTarget, visible } from "./g_ai";
 import { OnSameTeam } from "./g_cmds";
 import { SVF_MONSTER } from "./game";
+import { CTFApplyResistance, CTFApplyStrength, CTFCheckHurtCarrier, CTFMatchSetup, DF_ARMOR_PROTECT } from "./g_ctf";
 import { findradius } from "./g_utils";
 import {
   AI_DUCKED,
   AI_GOOD_GUY,
-  AI_SOUND_TARGET,
   DAMAGE_BULLET,
   DAMAGE_ENERGY,
   DAMAGE_NO_ARMOR,
@@ -58,6 +59,18 @@ import {
 } from "./g_local";
 import { ArmorIndex, FindItem, GetItemByIndex, ITEM_INDEX, PowerArmorType } from "./g_items";
 import { monster_death_use } from "./g_monster";
+
+// ctf/g_ctf.h: `extern cvar_t *ctf;` -- g_ctf.ts registers this cvar in
+// CTFInit() but keeps the resulting CvarT reference module-local (per
+// .orch/decisions.tsv's g_ctf.ts cvar-ownership note, same pattern as
+// g_main.ts's ctfCvar()), so this file -- which only reads it -- re-fetches
+// the same cvar object via gi.cvar() at each read site. gi.cvar() is
+// idempotent (Cvar_Get semantics): once CTFInit() has registered "ctf",
+// every later gi.cvar("ctf", ...) call returns that same CvarT.
+function ctfCvar(): number {
+  const c = gi.cvar("ctf", "1", CVAR_SERVERINFO);
+  return c === null ? 0 : c.value;
+}
 
 /*
 ============
@@ -248,7 +261,7 @@ export function CheckPowerArmor(ent: EdictT, point: Vec3, normal: Vec3, damage: 
     pa_te_type = TempEventT.TE_SCREEN_SPARKS;
     damage = (damage / 3) | 0;
   } else {
-    damagePerCell = 2;
+    damagePerCell = 1; // power armor is weaker in CTF
     pa_te_type = TempEventT.TE_SHIELD_SPARKS;
     damage = ((2 * damage) / 3) | 0;
   }
@@ -338,8 +351,6 @@ export function M_ReactToDamage(targ: EdictT, attacker: EdictT): void {
 
   // if attacker is a client, get mad at them because he's good and we're not
   if (attacker.client !== null) {
-    targ.monsterinfo.aiflags &= ~AI_SOUND_TARGET;
-
     // this can only happen in coop (both new and old enemies are clients)
     // only switch if can't see the current enemy
     if (targ.enemy !== null && targ.enemy.client !== null) {
@@ -367,22 +378,21 @@ export function M_ReactToDamage(targ: EdictT, attacker: EdictT): void {
     if (targ.enemy !== null && targ.enemy.client !== null) targ.oldenemy = targ.enemy;
     targ.enemy = attacker;
     if (!(targ.monsterinfo.aiflags & AI_DUCKED)) FoundTarget(targ);
-  }
-  // if they *meant* to shoot us, then shoot back
-  else if (attacker.enemy === targ) {
-    if (targ.enemy !== null && targ.enemy.client !== null) targ.oldenemy = targ.enemy;
-    targ.enemy = attacker;
-    if (!(targ.monsterinfo.aiflags & AI_DUCKED)) FoundTarget(targ);
-  }
-  // otherwise get mad at whoever they are mad at (help our buddy) unless it is us!
-  else if (attacker.enemy !== null && attacker.enemy !== targ) {
-    if (targ.enemy !== null && targ.enemy.client !== null) targ.oldenemy = targ.enemy;
+  } else {
+    // otherwise get mad at whoever they are mad at (help our buddy)
+    if (targ.enemy !== null) {
+      if (targ.enemy.client !== null) targ.oldenemy = targ.enemy;
+    }
     targ.enemy = attacker.enemy;
-    if (!(targ.monsterinfo.aiflags & AI_DUCKED)) FoundTarget(targ);
+    FoundTarget(targ);
   }
 }
 
-export function CheckTeamDamage(_targ: EdictT, _attacker: EdictT): boolean {
+export function CheckTeamDamage(targ: EdictT, attacker: EdictT): boolean {
+  if (ctfCvar() && targ.client !== null && attacker.client !== null) {
+    if (targ.client.resp.ctf_team === attacker.client.resp.ctf_team && targ !== attacker) return true;
+  }
+
   //FIXME make the next line real and uncomment this block
   // if ((ability to damage a teammate == OFF) && (targ's team == attacker's team))
   return false;
@@ -444,6 +454,9 @@ export function T_Damage(
     damage = (damage * 2) | 0;
   }
 
+  //strength tech
+  damage = CTFApplyStrength(attacker, damage);
+
   if (targ.flags & FL_NO_KNOCKBACK) knockback = 0;
 
   // figure momentum add
@@ -488,17 +501,37 @@ export function T_Damage(
     save = damage;
   }
 
-  const psave = CheckPowerArmor(targ, point, normal, take, dflags);
-  take -= psave;
+  //team armor protect
+  let psave: number;
+  let asave: number;
+  if (
+    ctfCvar() &&
+    targ.client !== null &&
+    attacker.client !== null &&
+    targ.client.resp.ctf_team === attacker.client.resp.ctf_team &&
+    targ !== attacker &&
+    (dmflags | 0) & DF_ARMOR_PROTECT
+  ) {
+    psave = 0;
+    asave = 0;
+  } else {
+    psave = CheckPowerArmor(targ, point, normal, take, dflags);
+    take -= psave;
 
-  let asave = CheckArmor(targ, point, normal, take, te_sparks, dflags);
-  take -= asave;
+    asave = CheckArmor(targ, point, normal, take, te_sparks, dflags);
+    take -= asave;
+  }
 
   //treat cheat/powerup savings the same as armor
   asave += save;
 
+  //resistance tech
+  take = CTFApplyResistance(targ, take);
+
   // team damage avoidance
   if (!(dflags & DAMAGE_NO_PROTECTION) && CheckTeamDamage(targ, attacker)) return;
+
+  CTFCheckHurtCarrier(targ, attacker);
 
   // do the damage
   if (take) {
@@ -508,7 +541,7 @@ export function T_Damage(
       SpawnDamage(te_sparks, point, normal, take);
     }
 
-    targ.health = targ.health - take;
+    if (!CTFMatchSetup()) targ.health = targ.health - take;
 
     if (targ.health <= 0) {
       if (targ.svflags & SVF_MONSTER || client !== null) targ.flags |= FL_NO_KNOCKBACK;
@@ -525,7 +558,7 @@ export function T_Damage(
       if (skill === 3) targ.pain_debounce_time = level.time + 5;
     }
   } else if (client !== null) {
-    if (!(targ.flags & FL_GODMODE) && take) {
+    if (!(targ.flags & FL_GODMODE) && take && !CTFMatchSetup()) {
       if (targ.pain) targ.pain(targ, attacker, knockback, take);
     }
   } else if (take) {

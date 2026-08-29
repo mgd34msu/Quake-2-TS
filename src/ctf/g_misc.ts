@@ -35,11 +35,13 @@ import {
   MASK_MONSTERSOLID,
   MulticastT,
   PMF_TIME_TELEPORT,
+  PRINT_HIGH,
   RF_FRAMELERP,
   RF_TRANSLUCENT,
   TempEventT,
 } from "../shared/q_shared";
 import { T_Damage, T_RadiusDamage } from "./g_combat";
+import { CTFPlayerResetGrapple, CTFResetFlag, CTFRespawnTech, CTFTeamName, CtfTeamT } from "./g_ctf";
 import { type Edict, SolidT, SVF_DEADMONSTER, SVF_MONSTER, SVF_NOCLIENT } from "./game";
 import {
   AI_COMBAT_POINT,
@@ -59,6 +61,7 @@ import {
   gameIndices,
   GIB_ORGANIC,
   gi,
+  IT_TECH,
   level,
   MOD_BARREL,
   MOD_BOMB,
@@ -280,9 +283,6 @@ export function ThrowClientHead(self: EdictT, damage: number): void {
     // bodies in the queue don't have a client anymore
     self.client.anim_priority = ANIM_DEATH;
     self.client.anim_end = self.s.frame;
-  } else {
-    self.think = null;
-    self.nextthink = 0;
   }
 
   gi.linkentity(self);
@@ -322,6 +322,25 @@ export function ThrowDebris(self: EdictT, modelname: string, speed: number, orig
 }
 
 export function BecomeExplosion1(self: EdictT): void {
+  //ZOID
+  // flags are important
+  if (self.classname === "item_flag_team1") {
+    CTFResetFlag(CtfTeamT.CTF_TEAM1); // this will free self!
+    gi.bprintf(PRINT_HIGH, `The ${CTFTeamName(CtfTeamT.CTF_TEAM1)} flag has returned!\n`);
+    return;
+  }
+  if (self.classname === "item_flag_team2") {
+    CTFResetFlag(CtfTeamT.CTF_TEAM2); // this will free self!
+    gi.bprintf(PRINT_HIGH, `The ${CTFTeamName(CtfTeamT.CTF_TEAM1)} flag has returned!\n`);
+    return;
+  }
+  // techs are important too
+  if (self.item !== null && (self.item.flags & IT_TECH) !== 0) {
+    CTFRespawnTech(self); // this frees self!
+    return;
+  }
+  //ZOID
+
   gi.WriteByte(svc_temp_entity);
   gi.WriteByte(TempEventT.TE_EXPLOSION1);
   gi.WritePosition(self.s.origin);
@@ -368,7 +387,6 @@ function path_corner_touch(self: EdictT, other: EdictT, _plane: CplaneT | null, 
     v[2] -= other.mins[2];
     VectorCopy(v, other.s.origin);
     next = G_PickTarget(next.target);
-    other.s.event = EntityEventT.EV_OTHER_TELEPORT;
   }
 
   other.goalentity = other.movetarget = next;
@@ -468,9 +486,20 @@ export function SP_point_combat(self: EdictT): void {
 /*QUAKED viewthing (0 .5 .8) (-8 -8 -8) (8 8 8)
 Just for the debugging level.  Don't use
 */
+// static in C (`static int robotron[4]`), never assigned anywhere in
+// g_misc.c -- always reads back as 0.
+const robotron = new Int32Array(4);
+
 function TH_viewthing(ent: EdictT): void {
   ent.s.frame = (ent.s.frame + 1) % 7;
   ent.nextthink = level.time + FRAMETIME;
+
+  if (ent.spawnflags !== 0) {
+    if (ent.s.frame === 0) {
+      ent.spawnflags = ((ent.spawnflags + 1) % 4) + 1;
+      ent.s.modelindex = robotron[ent.spawnflags - 1] ?? 0;
+    }
+  }
 }
 
 export function SP_viewthing(ent: EdictT): void {
@@ -1553,6 +1582,10 @@ function teleporter_touch(self: EdictT, other: EdictT, _plane: CplaneT | null, _
     gi.dprintf("Couldn't find destination\n");
     return;
   }
+
+  //ZOID
+  CTFPlayerResetGrapple(other);
+  //ZOID
 
   // unlink to make sure it can't possibly interfere with KillBox
   gi.unlinkentity(other as unknown as Edict);

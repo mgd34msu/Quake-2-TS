@@ -29,7 +29,6 @@ import {
   vec3_origin,
   type Vec3,
   VectorAdd,
-  VectorCompare,
   VectorCopy,
   VectorMA,
   VectorScale,
@@ -263,9 +262,8 @@ export function SV_FlyMove(ent: EdictT, time: number, mask: number): number {
     const new_velocity = vec3();
     for (i = 0; i < numplanes; i++) {
       ClipVelocity(original_velocity, planes[i], new_velocity, 1);
-
       for (j = 0; j < numplanes; j++)
-        if (j !== i && !VectorCompare(planes[i], planes[j])) {
+        if (j !== i) {
           if (DotProduct(new_velocity, planes[j]) < 0) break; // not ok
         }
       if (j === numplanes) break;
@@ -832,7 +830,6 @@ export function SV_Physics_Step(ent: EdictT): void {
 
     gi.linkentity(ent);
     G_TouchTriggers(ent);
-    if (!ent.inuse) return;
 
     if (ent.groundentity) if (!wasonground) if (hitsound) gi.sound(ent, 0, gi.soundindex("world/land.wav"), 1, 1, 0);
   }

@@ -1,8 +1,18 @@
 // g_chase.c
+//
+// Deviation: ctf/g_chase.c drops GetChaseTarget entirely (its caller in
+// ctf/p_client.c's spectator-command handling was rewritten to not need it --
+// see ctf/g_cmds.c's ChaseNext/ChasePrev call sites instead). src/ctf/p_client.ts
+// (owned by a concurrent p_client-delta worker, out of this unit's SCOPE)
+// still imports GetChaseTarget from this module; removing it here matches
+// the C delta exactly but leaves that import dangling until the p_client
+// sibling lands its own delta -- flagged as a follow-up for the
+// coordinator/p_client worker rather than silently patched here.
 
 import { AngleVectors, vec3, vec3_origin, VectorCopy, VectorMA, VectorNormalize } from "../shared/math";
-import { ANGLE2SHORT, MASK_SOLID, PITCH, PmTypeT, PMF_NO_PREDICTION, ROLL, YAW } from "../shared/q_shared";
-import { type EdictT, g_edicts, gameCvars, gi } from "./g_local";
+import { ANGLE2SHORT, MASK_SOLID, PITCH, PmTypeT, PMF_NO_PREDICTION } from "../shared/q_shared";
+import { type EdictT, g_edicts, gameCvars, gi, level, svc_layout } from "./g_local";
+import { SolidT } from "./game";
 
 function cvarNum(c: { value: number } | null): number {
   return c === null ? 0 : c.value;
@@ -24,14 +34,9 @@ export function UpdateChaseCam(ent: EdictT): void {
   let targ = client.chase_target;
   if (targ === null) return;
 
-  if (!targ.inuse || (targ.client !== null && targ.client.resp.spectator)) {
-    const old = client.chase_target;
-    ChaseNext(ent);
-    if (client.chase_target === old) {
-      client.chase_target = null;
-      client.ps.pmove.pm_flags &= ~PMF_NO_PREDICTION;
-      return;
-    }
+  if (!targ.inuse) {
+    client.chase_target = null;
+    return;
   }
 
   targ = client.chase_target;
@@ -76,26 +81,30 @@ export function UpdateChaseCam(ent: EdictT): void {
     goal[2] += 6;
   }
 
-  if (targ.deadflag) client.ps.pmove.pm_type = PmTypeT.PM_DEAD;
-  else client.ps.pmove.pm_type = PmTypeT.PM_FREEZE;
+  client.ps.pmove.pm_type = PmTypeT.PM_FREEZE;
 
   VectorCopy(goal, ent.s.origin);
   for (let i = 0; i < 3; i++) {
     client.ps.pmove.delta_angles[i] = ANGLE2SHORT(targ.client.v_angle[i] - client.resp.cmd_angles[i]);
   }
 
-  if (targ.deadflag) {
-    client.ps.viewangles[ROLL] = 40;
-    client.ps.viewangles[PITCH] = -15;
-    client.ps.viewangles[YAW] = targ.client.killer_yaw;
-  } else {
-    VectorCopy(targ.client.v_angle, client.ps.viewangles);
-    VectorCopy(targ.client.v_angle, client.v_angle);
-  }
+  VectorCopy(targ.client.v_angle, client.ps.viewangles);
+  VectorCopy(targ.client.v_angle, client.v_angle);
 
   ent.viewheight = 0;
   client.ps.pmove.pm_flags |= PMF_NO_PREDICTION;
   gi.linkentity(ent);
+
+  if (
+    (!client.showscores && client.menu === null && !client.showinventory && !client.showhelp && (level.framenum & 31) === 0) ||
+    client.update_chase
+  ) {
+    client.update_chase = false;
+    const s = `xv 0 yb -68 string2 "Chasing ${targ.client.pers.netname}"`;
+    gi.WriteByte(svc_layout);
+    gi.WriteString(s);
+    gi.unicast(ent, false);
+  }
 }
 
 export function ChaseNext(ent: EdictT): void {
@@ -111,7 +120,7 @@ export function ChaseNext(ent: EdictT): void {
     if (i > maxclients) i = 1;
     e = g_edicts[i];
     if (!e.inuse) continue;
-    if (e.client !== null && !e.client.resp.spectator) break;
+    if (e.solid !== SolidT.SOLID_NOT) break;
   } while (e !== client.chase_target);
 
   client.chase_target = e;
@@ -131,26 +140,9 @@ export function ChasePrev(ent: EdictT): void {
     if (i < 1) i = maxclients;
     e = g_edicts[i];
     if (!e.inuse) continue;
-    if (e.client !== null && !e.client.resp.spectator) break;
+    if (e.solid !== SolidT.SOLID_NOT) break;
   } while (e !== client.chase_target);
 
   client.chase_target = e;
   client.update_chase = true;
-}
-
-export function GetChaseTarget(ent: EdictT): void {
-  const client = ent.client;
-  if (client === null) return;
-
-  const maxclients = cvarNum(gameCvars.maxclients);
-  for (let i = 1; i <= maxclients; i++) {
-    const other = g_edicts[i];
-    if (other.inuse && other.client !== null && !other.client.resp.spectator) {
-      client.chase_target = other;
-      client.update_chase = true;
-      UpdateChaseCam(ent);
-      return;
-    }
-  }
-  gi.centerprintf(ent, "No other players to chase.");
 }
