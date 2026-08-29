@@ -687,6 +687,11 @@ function Keys_MenuKey(key: number): string | null {
   }
 }
 
+// unreferenced in the C tree too (the only cursordraw assignment uses
+// KeyCursorDrawFunc); ported for completeness.
+function NullCursorDraw(_self: unknown): void {}
+void NullCursorDraw; // referenced so tsc's unused check stays quiet, like the C linker kept the symbol
+
 function M_Menu_Keys_f(): void {
   Keys_MenuInit();
   M_PushMenu(Keys_MenuDraw, Keys_MenuKey);

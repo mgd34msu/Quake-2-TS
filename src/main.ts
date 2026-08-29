@@ -66,7 +66,7 @@ import { Netchan_Init } from "./qcommon/net_chan";
 import { NET_Init } from "./platform/net_udp";
 import { Sys_ConsoleInput, Sys_Error, Sys_Milliseconds } from "./platform/sys";
 import { SV_Frame, SV_Init, SV_Shutdown } from "./server/sv_main";
-import { CL_Drop, CL_Frame, CL_Init, Cmd_ForwardToServer } from "./client/cl_main";
+import { CL_Drop, CL_Frame, CL_Init, CL_Shutdown, Cmd_ForwardToServer } from "./client/cl_main";
 import { SCR_BeginLoadingPlaque } from "./client/cl_scrn";
 import { Key_Init } from "./client/keys_impl";
 import { SCR_EndLoadingPlaque } from "./client/cl_scrn";
@@ -97,7 +97,7 @@ export function Qcommon_Init(argv: string[]): void {
     // cmd.c forward-declares Cmd_ForwardToServer and cl_null.c defines it;
     // cmd.ts models that link-time binding as a registrable hook.
     setCmdForwardToServerHandler(Cmd_ForwardToServer);
-    SetErrorHandlers(SV_Shutdown, CL_Drop);
+    SetErrorHandlers(SV_Shutdown, CL_Drop, CL_Shutdown);
     SetLoadingPlaqueHandler(SCR_BeginLoadingPlaque);
 
     Key_Init();

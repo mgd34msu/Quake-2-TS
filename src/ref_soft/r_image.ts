@@ -29,7 +29,7 @@ r_local.h, is not referenced by any other ported module, and is not named
 in this unit's brief -- not ported.
 */
 
-import { Com_PageInMemory, ERR_DROP, MAX_QPATH, PRINT_ALL, PRINT_DEVELOPER } from "../shared/q_shared";
+import { Com_PageInMemory, Com_sprintf, ERR_DROP, MAX_QPATH, PRINT_ALL, PRINT_DEVELOPER } from "../shared/q_shared";
 import { ri, r_notexture_mip } from "./r_local";
 import { ImageT, ImagetypeT, registration_sequence, SetRegistrationSequence } from "./r_model";
 
@@ -300,4 +300,40 @@ export function R_ShutdownImages(): void {
     // free it
     clearImage(image);
   }
+}
+
+/*
+===============
+R_ImageList_f
+===============
+*/
+export function R_ImageList_f(): void {
+  ri.Con_Printf(PRINT_ALL, "------------------\n");
+  let texels = 0;
+
+  for (let i = 0; i < numr_images; i++) {
+    const image = r_images[i];
+    if (image.registration_sequence <= 0) continue;
+    texels += image.width * image.height;
+    switch (image.type) {
+      case ImagetypeT.it_skin:
+        ri.Con_Printf(PRINT_ALL, "M");
+        break;
+      case ImagetypeT.it_sprite:
+        ri.Con_Printf(PRINT_ALL, "S");
+        break;
+      case ImagetypeT.it_wall:
+        ri.Con_Printf(PRINT_ALL, "W");
+        break;
+      case ImagetypeT.it_pic:
+        ri.Con_Printf(PRINT_ALL, "P");
+        break;
+      default:
+        ri.Con_Printf(PRINT_ALL, " ");
+        break;
+    }
+
+    ri.Con_Printf(PRINT_ALL, Com_sprintf(" %3i %3i : %s\n", image.width, image.height, image.name));
+  }
+  ri.Con_Printf(PRINT_ALL, Com_sprintf("Total texel count: %i\n", texels));
 }

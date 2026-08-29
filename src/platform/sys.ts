@@ -44,6 +44,12 @@ export function Sys_ConsoleInput(): string | null {
   return null;
 }
 
+// sys_linux.c's Sys_GetClipboardData returns NULL (only win32 implements a
+// real clipboard read); ported as the linux behavior.
+export function Sys_GetClipboardData(): string | null {
+  return null;
+}
+
 /*
 sys_linux.c's `unsigned sys_frame_time`, assigned once per frame by
 Sys_SendKeyEvents before it pumps the OS event queue. cl_input.c's

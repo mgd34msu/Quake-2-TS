@@ -19,7 +19,7 @@ placement, applied to an interface surface instead of a file.
 
 `QGL_Init(dllname)` / `QGL_Shutdown()` (the two actual function prototypes
 qgl.h declares, as opposed to the function-pointer table) become
-`loadQGLFromSystem()` below; there is no `QGL_Shutdown` counterpart because
+`loadQGLFromSystem()` below; QGL_Shutdown below closes the dlopen handle (qgl_linux.c's dlclose).
 nothing in this scaffold's reachable call graph invokes it yet (reported
 gap -- add one alongside GLimp_Shutdown when gl_rmain.ts's real R_Shutdown
 lands).
@@ -532,6 +532,23 @@ function resolveGlSelectTextureSGIS(libraryPath: string, getProcAddress: GLGetPr
 // missing property, matching QGL's "every member always exists" interface
 // contract (see this file's own header note on why QGL can't express "this
 // driver doesn't have it").
+let loadedGlLibrary: Library<typeof glSymbols> | null = null;
+
+/*
+** QGL_Shutdown
+**
+** Unloads the specified DLL then nulls out all the proc pointers. The
+** pointer-nulling half has no TS equivalent (the QGL interface object is
+** replaced wholesale by SetQGL); the library-unload half closes the
+** dlopen handle exactly like qgl_linux.c's dlclose(glw_state.OpenGLLib).
+*/
+export function QGL_Shutdown(): void {
+  if (loadedGlLibrary) {
+    loadedGlLibrary.close();
+    loadedGlLibrary = null;
+  }
+}
+
 export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
   const libraryPath = resolveSystemGLLibraryPath();
 
@@ -541,6 +558,7 @@ export function loadQGLFromSystem(getProcAddress?: GLGetProcAddressFn): QGL {
   } catch (err) {
     throw new Error(`loadQGLFromSystem: failed to load ${libraryPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
+  loadedGlLibrary = lib;
 
   const s = lib.symbols;
 

@@ -68,6 +68,10 @@ export function NET_CompareBaseAdr(a: NetadrT, b: NetadrT): boolean {
   return false;
 }
 
+export function NET_BaseAdrToString(a: NetadrT): string {
+  return `${a.ip[0]}.${a.ip[1]}.${a.ip[2]}.${a.ip[3]}`;
+}
+
 export function NET_AdrToString(a: NetadrT): string {
   return Com_sprintf("%i.%i.%i.%i:%i", a.ip[0], a.ip[1], a.ip[2], a.ip[3], a.port);
 }

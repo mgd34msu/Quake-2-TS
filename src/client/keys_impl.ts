@@ -25,10 +25,10 @@
 // stubs) so this unit's test brief can round-trip `bind` through
 // Cmd_TokenizeString + Key_Bind_f the same way the real console does.
 //
-// Sys_GetClipboardData has no home yet (platform/sys.ts does not export it
-// -- out of this unit's SCOPE); Key_Console's ctrl-V paste branch is
-// dropped, reported as a deviation.
+// Sys_GetClipboardData lives in platform/sys.ts (linux semantics: returns
+// null); Key_Console's ctrl-V/shift-insert paste branch is ported in full.
 
+import { Sys_GetClipboardData } from "../platform/sys";
 import {
   K_TAB,
   K_ENTER,
@@ -291,8 +291,21 @@ function Key_Console(keyIn: number): void {
       break;
   }
 
-  // ctrl-V / shift-insert clipboard paste dropped -- see file banner
-  // (Sys_GetClipboardData has no ported home yet).
+  if ((String.fromCharCode(key).toUpperCase() === "V" && keydown[K_CTRL]) || ((key === K_INS || key === K_KP_INS) && keydown[K_SHIFT]) ) {
+    const cbd = Sys_GetClipboardData();
+    if (cbd !== null) {
+      // strtok(cbd, "\n\r\b") -- keep only the first line
+      let text = cbd.split(/[\n\r\b]/)[0] ?? "";
+      let i = text.length;
+      if (i + key_linepos >= MAXCMDLINE) i = MAXCMDLINE - key_linepos;
+      if (i > 0) {
+        text = text.slice(0, i);
+        key_lines[edit_line] += text;
+        key_linepos += i;
+      }
+    }
+    return;
+  }
 
   if (key === "l".charCodeAt(0) && keydown[K_CTRL]) {
     Cbuf_AddText("clear\n");

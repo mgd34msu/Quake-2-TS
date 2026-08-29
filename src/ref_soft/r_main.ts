@@ -25,11 +25,8 @@ already own those symbols), so that whole section is dropped -- reported
 dropped branch, matching PORTING.md's "#ifdef ... take the portable path"
 rule applied to a link-time (not OS) ifdef.
 
-`R_ImageList_f` (the `imagelist` console command) was never ported -- see
-r_image.ts's own header comment ("not ported ... not named in this unit's
-brief"); `R_Register`/`R_UnRegister` accordingly drop the
-`ri.Cmd_AddCommand("imagelist", ...)` / `ri.Cmd_RemoveCommand("imagelist")`
-pair rather than registering a command with nothing behind it.
+`R_ImageList_f` (the `imagelist` console command) is ported in r_image.ts
+and registered/unregistered here exactly as the C does.
 
 `#if id386` branches (Sys_MakeCodeWriteable/Sys_SetFPCW in R_Init) are
 dropped per PORTING.md's portable-path rule.
@@ -162,7 +159,7 @@ import {
 } from "./r_model";
 import { r_worldmodel, R_DrawSolidClippedSubmodelPolygons, R_DrawSubmodelPolygons, R_RenderWorld, R_RotateBmodel } from "./r_bsp";
 import { Draw_Char, Draw_FadeScreen, Draw_Fill, Draw_FindPic, Draw_GetPicSize, Draw_InitLocal, Draw_Pic, Draw_StretchPic, Draw_StretchRaw, Draw_TileClear } from "./r_draw";
-import { LoadPCX, R_FindImage, R_InitImages, R_RegisterSkin, R_ShutdownImages } from "./r_image";
+import { LoadPCX, R_FindImage, R_ImageList_f, R_InitImages, R_RegisterSkin, R_ShutdownImages } from "./r_image";
 import { R_BeginEdgeFrame, R_ScanEdges, R_SurfacePatch } from "./r_edge";
 import { r_skytexinfo } from "./r_rast";
 import { D_FlushCaches, R_InitCaches } from "./r_surf";
@@ -275,6 +272,7 @@ export function R_Register(): void {
 
   ri.Cmd_AddCommand("modellist", Mod_Modellist_f);
   ri.Cmd_AddCommand("screenshot", R_ScreenShot_f);
+  ri.Cmd_AddCommand("imagelist", R_ImageList_f);
   // "imagelist" -- see file header comment: R_ImageList_f was never ported
 
   if (rCvars.sw_mode) rCvars.sw_mode.modified = true; // force us to do mode specific stuff later
@@ -287,6 +285,7 @@ export function R_Register(): void {
 
 export function R_UnRegister(): void {
   ri.Cmd_RemoveCommand("screenshot");
+  ri.Cmd_RemoveCommand("imagelist");
   ri.Cmd_RemoveCommand("modellist");
   // "imagelist" -- see file header comment / R_Register
 }

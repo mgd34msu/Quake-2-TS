@@ -120,9 +120,11 @@ export function SetConPrintHandler(fn: (msg: string) => void): void {
 // either side, so main.ts registers them (same idiom as SetConPrintHandler).
 let svShutdownHandler: ((finalmsg: string, reconnect: boolean) => void) | null = null;
 let clDropHandler: (() => void) | null = null;
-export function SetErrorHandlers(svShutdown: (finalmsg: string, reconnect: boolean) => void, clDrop: () => void): void {
+let clShutdownHandler: (() => void) | null = null;
+export function SetErrorHandlers(svShutdown: (finalmsg: string, reconnect: boolean) => void, clDrop: () => void, clShutdown?: () => void): void {
   svShutdownHandler = svShutdown;
   clDropHandler = clDrop;
+  clShutdownHandler = clShutdown ?? null;
 }
 
 // sv_init.c calls the client's CL_Drop/SCR_BeginLoadingPlaque directly in
@@ -258,6 +260,7 @@ export function Com_Error(code: number, fmt: string, ...args: Array<string | num
   }
 
   if (svShutdownHandler) svShutdownHandler(`Server fatal crashed: ${msg}\n`, false);
+  if (clShutdownHandler) clShutdownHandler();
   if (logfile !== null) {
     closeSync(logfile);
     logfile = null;
@@ -268,6 +271,7 @@ export function Com_Error(code: number, fmt: string, ...args: Array<string | num
 // Both client and server can use this, and it will do the apropriate things.
 export function Com_Quit(): void {
   if (svShutdownHandler) svShutdownHandler("Server quit\n", false);
+  if (clShutdownHandler) clShutdownHandler();
   if (logfile !== null) {
     closeSync(logfile);
     logfile = null;

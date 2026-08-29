@@ -260,6 +260,16 @@ than a whole-buffer FS_WriteFile call. Returns null on failure, matching
 fopen(name, "wb") returning NULL.
 ==============
 */
+/*
+================
+FS_filelength
+================
+*/
+export function FS_filelength(handle: number): number {
+  // C: ftell/fseek(END)/fseek(back); node exposes the same via fstat
+  return fstatSync(handle).size;
+}
+
 export function FS_FOpenFileWrite(path: string): number | null {
   FS_CreatePath(path);
   let fd: number;
@@ -358,7 +368,7 @@ export function FS_FOpenFile(filename: string): FsOpenResult | null {
     Com_DPrintf("link file: %s\n", netpath);
     const handle = fs_next_handle++;
     fs_open_handles.set(handle, { fd, position: 0 });
-    return { handle, length: fstatSync(fd).size };
+    return { handle, length: FS_filelength(fd) };
   }
 
   // search through the path, one element at a time
@@ -397,7 +407,7 @@ export function FS_FOpenFile(filename: string): FsOpenResult | null {
       Com_DPrintf("FindFile: %s\n", netpath);
       const handle = fs_next_handle++;
       fs_open_handles.set(handle, { fd, position: 0 });
-      return { handle, length: fstatSync(fd).size };
+      return { handle, length: FS_filelength(fd) };
     }
   }
 

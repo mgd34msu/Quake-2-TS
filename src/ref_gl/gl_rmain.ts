@@ -145,7 +145,7 @@ import {
   GL_TextureSolidMode,
   GL_SetTexturePalette,
 } from "./gl_image";
-import { loadQGLFromSystem, type GLGetProcAddressFn } from "./qgl";
+import { loadQGLFromSystem, QGL_Shutdown, type GLGetProcAddressFn } from "./qgl";
 import { Draw_Char, Draw_Fill, Draw_FadeScreen, Draw_FindPic, Draw_GetPicSize, Draw_InitLocal, Draw_Pic, Draw_StretchPic, Draw_StretchRaw, Draw_TileClear, SetRawPalette } from "./gl_draw";
 import { R_ScaleTurbsinForRInit, R_SetSky } from "./gl_warp";
 import { R_DrawWorld, R_DrawAlphaSurfaces, R_MarkLeaves, R_DrawBrushModel } from "./gl_rsurf";
@@ -1167,9 +1167,9 @@ export function R_Shutdown(): void {
   glimp.Shutdown();
 
   /*
-  ** shutdown our QGL subsystem -- no QGL_Shutdown equivalent exists to call
-  ** here, see file header comment.
+  ** shutdown our QGL subsystem
   */
+  QGL_Shutdown();
 }
 
 /*
