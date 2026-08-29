@@ -303,7 +303,12 @@ export async function SV_InitGame(): Promise<void> {
   // get any latched variable changes (maxclients, etc)
   Cvar_GetLatchedVars();
 
-  svs.initialized = true;
+  // C sets svs.initialized here, at the top. It is set at the bottom instead
+  // because this function is async (NET_Config has to await a socket bind):
+  // svs.initialized is what SV_Frame tests before touching the game library,
+  // so setting it before the await lets a frame reach SV_RunGameFrame while
+  // SV_InitGameProgs has not run yet. Nothing between here and the bottom
+  // reads svs.initialized, so the move is behaviour-preserving.
 
   if (Cvar_VariableValue("coop") && Cvar_VariableValue("deathmatch")) {
     Com_Printf("Deathmatch and Coop both set, disabling Coop\n");
@@ -353,6 +358,8 @@ export async function SV_InitGame(): Promise<void> {
     svs.clients[i].edict = ent;
     svs.clients[i].lastcmd = new UsercmdT();
   }
+
+  svs.initialized = true;
 }
 
 /*

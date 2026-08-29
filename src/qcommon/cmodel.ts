@@ -169,6 +169,15 @@ export let c_pointcontents = 0;
 export let c_traces = 0;
 export let c_brush_traces = 0;
 
+// common.c's Qcommon_Frame zeroes these three directly through `extern int`
+// declarations; `export let` bindings are read-only outside their module, so
+// src/main.ts clears them through this setter instead.
+export function resetTraceCounters(): void {
+  c_pointcontents = 0;
+  c_traces = 0;
+  c_brush_traces = 0;
+}
+
 // atoi()'s lenient parse (leading digits only, 0 if none) -- see cvar.ts's
 // `atof` for the same pattern applied to floats.
 function atoi(s: string): number {

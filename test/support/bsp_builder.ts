@@ -108,7 +108,9 @@ Builds the full IBSP buffer. Lump order in the file is arbitrary (only the
 header's fileofs/filelen matter); lumps CM_LoadMap never reads (VERTEXES,
 FACES, LIGHTING, LEAFFACES, EDGES, SURFEDGES, POP) are emitted empty.
 */
-export function buildBoxRoomBsp(): Uint8Array {
+export const WORLDSPAWN_ONLY_ENTITIES = '{\n"classname" "worldspawn"\n}\n';
+
+export function buildBoxRoomBsp(entityString: string = WORLDSPAWN_ONLY_ENTITIES): Uint8Array {
   const planes = wallPlanes();
 
   // ---- PLANES (6) ----
@@ -219,8 +221,8 @@ export function buildBoxRoomBsp(): Uint8Array {
   });
   const areaportalsLump = new Uint8Array(0);
 
-  // ---- ENTITIES: one worldspawn entity ----
-  const entitiesLump = stringBytes('{\n"classname" "worldspawn"\n}\n');
+  // ---- ENTITIES: worldspawn by default, caller-supplied otherwise ----
+  const entitiesLump = stringBytes(entityString);
 
   // ---- unused-by-cmodel lumps, all empty ----
   const empty = new Uint8Array(0);

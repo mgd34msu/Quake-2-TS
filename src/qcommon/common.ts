@@ -111,6 +111,17 @@ export function Com_EndRedirect(): void {
 
 let logfile: number | null = null;
 
+// common.c's `int time_before_game, time_after_game, time_before_ref,
+// time_after_ref;` (qcommon.h externs them). Written from sv_main.ts and the
+// renderer, read by Qcommon_Frame's host_speeds report in src/main.ts, so
+// they live in a holder object rather than as `export let` bindings.
+export const comTiming = {
+  time_before_game: 0,
+  time_after_game: 0,
+  time_before_ref: 0,
+  time_after_ref: 0,
+};
+
 // nothing outside this module should modify these; they are exported the way
 // C exposes `cvar_t *developer;` etc. as externs -- future modules (chiefly
 // the eventual Qcommon_Init in src/main.ts) are expected to Cvar_Get() into
@@ -123,6 +134,34 @@ export let fixedtime: CvarT | null = null;
 export let logfile_active: CvarT | null = null; // 1 = buffer log, 2 = flush after each print
 export let showtrace: CvarT | null = null;
 export let dedicated: CvarT | null = null;
+
+// `export let` bindings cannot be assigned from outside their module, so
+// Qcommon_Init (src/main.ts) fills them through these setters -- the same
+// shape src/server/server.ts already uses for setSvPaused/setMaxclients/...
+export function setHostSpeeds(v: CvarT | null): void {
+  host_speeds = v;
+}
+export function setLogStats(v: CvarT | null): void {
+  log_stats = v;
+}
+export function setDeveloper(v: CvarT | null): void {
+  developer = v;
+}
+export function setTimescale(v: CvarT | null): void {
+  timescale = v;
+}
+export function setFixedtime(v: CvarT | null): void {
+  fixedtime = v;
+}
+export function setLogfileActive(v: CvarT | null): void {
+  logfile_active = v;
+}
+export function setShowtrace(v: CvarT | null): void {
+  showtrace = v;
+}
+export function setDedicated(v: CvarT | null): void {
+  dedicated = v;
+}
 
 // Both client and server can use this, and it will output to the apropriate place.
 export function Com_Printf(fmt: string, ...args: Array<string | number>): void {

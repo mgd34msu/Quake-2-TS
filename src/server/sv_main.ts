@@ -6,7 +6,7 @@ import { NET_CompareBaseAdr, NET_AdrToString, NET_IsLocalAddress, NET_GetPacket 
 import { MSG_BeginReading, MSG_ReadLong, MSG_ReadShort, MSG_ReadStringLine, MSG_WriteByte, MSG_WriteString, SZ_Init, SZ_Clear } from "../qcommon/sizebuf";
 import { Cmd_TokenizeString, Cmd_Argv, Cmd_Argc, Cmd_ExecuteString } from "../qcommon/cmd";
 import { Cvar_Get, Cvar_Serverinfo } from "../qcommon/cvar";
-import { Com_Printf, Com_DPrintf, Com_BeginRedirect, Com_EndRedirect, Com_SetServerState, dedicated, host_speeds } from "../qcommon/common";
+import { Com_Printf, Com_DPrintf, Com_BeginRedirect, Com_EndRedirect, Com_SetServerState, comTiming, dedicated, host_speeds } from "../qcommon/common";
 import { FS_FreeFile, FS_FCloseFile } from "../qcommon/files";
 import { Sys_Milliseconds } from "../platform/sys";
 import {
@@ -51,6 +51,7 @@ import { geHolder, SV_ShutdownGameProgs } from "./sv_game";
 import { SV_BroadcastPrintf, SV_SendClientMessages, SV_FlushRedirect } from "./sv_send";
 import { SV_ExecuteClientMessage } from "./sv_user";
 import { SV_RecordDemoMessage } from "./sv_ents";
+import { SV_InitOperatorCommands } from "./sv_ccmds";
 
 //============================================================================
 
@@ -73,13 +74,6 @@ export let hostname: CvarT | null = null;
 export let public_server: CvarT | null = null; // should heartbeats be sent
 
 export let sv_reconnect_limit: CvarT | null = null; // minimum seconds between connect messages
-
-// time_before_game/time_after_game are common.c globals (qcommon.h externs
-// them) that qcommon/common.ts has not ported yet -- see report. Declared
-// locally here since SV_RunGameFrame/SV_Frame are their only writers/readers
-// among the modules ported so far.
-let time_before_game = 0;
-let time_after_game = 0;
 
 function atoi(s: string): number {
   const n = Number.parseInt(s, 10);
@@ -662,7 +656,7 @@ SV_RunGameFrame
 =================
 */
 export function SV_RunGameFrame(): void {
-  if (host_speeds && host_speeds.value) time_before_game = Sys_Milliseconds();
+  if (host_speeds && host_speeds.value) comTiming.time_before_game = Sys_Milliseconds();
 
   // we always need to bump framenum, even if we
   // don't run the world, otherwise the delta
@@ -684,7 +678,7 @@ export function SV_RunGameFrame(): void {
     }
   }
 
-  if (host_speeds && host_speeds.value) time_after_game = Sys_Milliseconds();
+  if (host_speeds && host_speeds.value) comTiming.time_after_game = Sys_Milliseconds();
 }
 
 /*
@@ -693,7 +687,8 @@ SV_Frame
 ==================
 */
 export function SV_Frame(msec: number): void {
-  time_before_game = time_after_game = 0;
+  comTiming.time_before_game = 0;
+  comTiming.time_after_game = 0;
 
   // if server is not active, do nothing
   if (!svs.initialized) return;
@@ -853,15 +848,7 @@ Only called at quake2.exe startup, not for each game
 ===============
 */
 export function SV_Init(): void {
-  // SV_InitOperatorCommands() -- omitted. server.h declares this prototype
-  // under its "sv_main.c" comment block, but the real definition lives in
-  // sv_ccmds.c (confirmed against the upstream source), which is a pending
-  // stub in this unit exporting only SV_ReadLevelFile/SV_Status_f (server.h's
-  // own sv_ccmds.c section). Calling it here would mean calling a function
-  // this unit does not define; per this unit's brief, SV_Init is scoped to
-  // cvar registration only. See report -- the sv_ccmds.c owner should call
-  // Cmd_AddCommand("map"/"kick"/"status"/etc, ...) from its own SV_Init hook,
-  // or this line should be added back once that unit lands.
+  SV_InitOperatorCommands();
 
   rcon_password = Cvar_Get("rcon_password", "", 0);
   Cvar_Get("skill", "1", 0);

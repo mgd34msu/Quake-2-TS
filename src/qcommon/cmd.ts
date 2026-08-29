@@ -457,6 +457,10 @@ export function Cmd_CompleteCommand(partial: string): string | null {
 // Owning module: src/client/cl_main.ts.
 export let cmdForwardToServerHandler: (() => void) | null = null;
 
+export function setCmdForwardToServerHandler(fn: (() => void) | null): void {
+  cmdForwardToServerHandler = fn;
+}
+
 function Cmd_ForwardToServer(): void {
   if (cmdForwardToServerHandler) cmdForwardToServerHandler();
 }
