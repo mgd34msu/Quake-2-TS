@@ -2,9 +2,17 @@
 // src/qcommon/common.ts deliberately left to this module (see its header
 // comment), plus the dedicated-server main() loop from linux/sys_linux.c.
 //
-// This build is dedicated-only: the C `#ifdef DEDICATED_ONLY` branch is the
-// one taken, so `dedicated` is registered with a default of "1" and the
-// client subsystems come from src/null/cl_null.ts.
+// This build takes the C `#ifndef DEDICATED_ONLY` branch: `dedicated` is
+// registered with a default of "0" and the client subsystems are the real
+// ones (src/client/*). src/null/cl_null.ts is the DEDICATED_ONLY branch's
+// alternative and stays unreferenced, the way the C makefile leaves it out
+// of a full client build. A dedicated server is `+set dedicated 1`, at
+// which point CL_Init/CL_Frame return immediately on their own cvar guards,
+// exactly as they do in C.
+//
+// SDL_SetBackendEnabled arms src/platform/sdl.ts on the client path only:
+// nothing in the port opens libSDL2 until it is armed, so a dedicated
+// server never needs the library to be installed.
 //
 // Omitted from Qcommon_Init, with reasons:
 //   z_chain re-init / Cmd_AddCommand("z_stats", Z_Stats_f) -- the zone
@@ -58,7 +66,10 @@ import { Netchan_Init } from "./qcommon/net_chan";
 import { NET_Init } from "./platform/net_udp";
 import { Sys_ConsoleInput, Sys_Error, Sys_Milliseconds } from "./platform/sys";
 import { SV_Frame, SV_Init } from "./server/sv_main";
-import { CL_Frame, CL_Init, Cmd_ForwardToServer, Key_Init, SCR_EndLoadingPlaque } from "./null/cl_null";
+import { CL_Frame, CL_Init, Cmd_ForwardToServer } from "./client/cl_main";
+import { Key_Init } from "./client/keys_impl";
+import { SCR_EndLoadingPlaque } from "./client/cl_scrn";
+import { SDL_SetBackendEnabled } from "./platform/sdl";
 
 // common.c's Com_Error_f lives beside Com_Error there; common.ts omitted the
 // whole Qcommon_Init block, so its one and only registration point is here.
@@ -115,7 +126,10 @@ export function Qcommon_Init(argv: string[]): void {
     setFixedtime(Cvar_Get("fixedtime", "0", 0));
     setLogfileActive(Cvar_Get("logfile", "0", 0));
     setShowtrace(Cvar_Get("showtrace", "0", 0));
-    setDedicated(Cvar_Get("dedicated", "1", CVAR_NOSET));
+    setDedicated(Cvar_Get("dedicated", "0", CVAR_NOSET));
+
+    // arm the windowing/input/audio backend before CL_Init reaches VID_Init
+    if (dedicated && !dedicated.value) SDL_SetBackendEnabled(true);
 
     const s = Com_sprintf("%4.2f %s %s", VERSION, CPUSTRING, BUILDSTRING);
     Cvar_Get("version", s, CVAR_SERVERINFO | CVAR_NOSET);

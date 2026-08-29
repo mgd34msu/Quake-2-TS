@@ -2,15 +2,27 @@
 // (SNDDMA_Init/SNDDMA_GetDMAPos/SNDDMA_Shutdown/SNDDMA_BeginPainting/
 // SNDDMA_Submit), matching PORTING.md's platform mapping: the linux/win32/
 // irix per-OS backends are alternative implementations of this same
-// interface and are not transliterated file-by-file. This is a NULL
-// driver: bun has no audio output API, so there is no real DAC anywhere
-// behind this file. `dma.buffer` is a fixed-size ring buffer that
-// snd_mix.ts's S_PaintChannels/S_TransferPaintBuffer write PCM into, and
-// SNDDMA_GetDMAPos reports a simulated "playback" position that advances
-// with wall-clock time (as if a device were continuously draining the
-// ring at `dma.speed` samples/sec) so the mixer's mix-ahead pacing
-// (S_Update_'s GetSoundtime/endtime math in snd_dma.ts) behaves the same
-// as it would against real hardware. No sound is ever actually audible.
+// interface and are not transliterated file-by-file.
+//
+// Two drivers live behind that interface here:
+//
+// - SDL (sdl.ts), when the client path armed the backend and the system
+//   library opened. `dma.buffer` stays the ring buffer snd_mix.ts's
+//   S_PaintChannels/S_TransferPaintBuffer write PCM into, exactly as
+//   DirectSound's secondary buffer is in win32/snd_win.c; SNDDMA_Submit
+//   pushes the newly painted span into SDL's audio queue, and
+//   SNDDMA_GetDMAPos reports how much of everything ever pushed the device
+//   has actually consumed, which is what DirectSound's play cursor
+//   (IDirectSoundBuffer_GetCurrentPosition in SNDDMA_GetDMAPos) reports
+//   there. No SDL audio callback is installed, so nothing in the mixer runs
+//   off the main thread.
+//
+// - A NULL driver, when there is no SDL device (dedicated server, missing
+//   library, no audio device). Nothing is audible; SNDDMA_GetDMAPos reports
+//   a simulated "playback" position that advances with wall-clock time (as
+//   if a device were draining the ring at `dma.speed` samples/sec) so the
+//   mixer's mix-ahead pacing (S_Update_'s GetSoundtime/endtime math in
+//   snd_dma.ts) behaves the same as it would against real hardware.
 //
 // Field values are modeled on win32/snd_win.c's SNDDMA_InitWav (the most
 // fully-specified backend, and the one that reads the `s_khz` cvar
@@ -24,7 +36,8 @@
 // dirs are "not transliterated"), so the bug is not reproduced.
 
 import { Cvar_VariableValue } from "../qcommon/cvar";
-import { dma } from "../client/snd_loc";
+import { dma, paintedtime } from "../client/snd_loc";
+import { SDLSND_Active, SDLSND_Close, SDLSND_ConsumedBytes, SDLSND_Open, SDLSND_Queue } from "./sdl";
 
 // 0x10000 bytes, the same fixed ring size DirectSound's secondary buffer
 // used in win32/snd_win.c (SECONDARY_BUFFER_SIZE). At samplebits=16 that's
@@ -34,6 +47,9 @@ const RING_BUFFER_BYTES = 0x10000;
 
 let initialized = false;
 let startTimeMs = 0;
+let usingSdl = false;
+// paintedtime (in sample frames) of everything already handed to the device
+let submitted = 0;
 
 function pickSpeed(): number {
   const khz = Cvar_VariableValue("s_khz");
@@ -47,19 +63,37 @@ export function SNDDMA_Init(): boolean {
   dma.samplebits = 16;
   dma.speed = pickSpeed();
 
+  const obtained = SDLSND_Open(dma.speed, dma.channels, dma.samplebits);
+  usingSdl = obtained !== null;
+  if (obtained) {
+    dma.speed = obtained.freq;
+    dma.channels = obtained.channels;
+  }
+
   dma.samples = RING_BUFFER_BYTES / (dma.samplebits / 8);
   dma.submission_chunk = 1;
   dma.buffer = new Uint8Array(RING_BUFFER_BYTES);
   dma.samplepos = 0;
 
+  submitted = 0;
   startTimeMs = performance.now();
   initialized = true;
 
   return true;
 }
 
+function bytesPerFrame(): number {
+  return dma.channels * (dma.samplebits / 8);
+}
+
 export function SNDDMA_GetDMAPos(): number {
   if (!initialized) return 0;
+
+  if (usingSdl && SDLSND_Active()) {
+    const framesPlayed = Math.floor(SDLSND_ConsumedBytes() / bytesPerFrame());
+    dma.samplepos = (framesPlayed * dma.channels) % dma.samples;
+    return dma.samplepos;
+  }
 
   const elapsedSec = (performance.now() - startTimeMs) / 1000;
   const framesPlayed = Math.floor(elapsedSec * dma.speed);
@@ -71,14 +105,47 @@ export function SNDDMA_GetDMAPos(): number {
 
 export function SNDDMA_Shutdown(): void {
   initialized = false;
+  usingSdl = false;
+  submitted = 0;
+  SDLSND_Close();
   dma.buffer = new Uint8Array(0);
 }
 
 export function SNDDMA_BeginPainting(): void {
   // no locking needed: dma.buffer is a plain in-memory array, not a
-  // hardware-shared buffer that needs to be locked before writes.
+  // hardware-shared buffer that has to be locked before writes (the
+  // IDirectSoundBuffer_Lock in win32/snd_win.c).
 }
 
+/*
+Hand the span the mixer just painted (`submitted` .. paintedtime, in sample
+frames) to the device. win32/snd_win.c's SNDDMA_Submit only has to unlock
+the DirectSound buffer because the hardware reads the same memory; a queue
+device has to be given the bytes, so the ring is read back out here.
+*/
 export function SNDDMA_Submit(): void {
-  // no device to flush to.
+  if (!initialized || !usingSdl || !SDLSND_Active()) return;
+
+  const frameBytes = bytesPerFrame();
+  const totalFrames = dma.samples / dma.channels;
+
+  // paintedtime went backwards (S_Init/S_StopAllSounds reset it), or the
+  // device fell so far behind that the ring already wrapped over the
+  // unsubmitted span: resync instead of sending stale audio.
+  if (paintedtime < submitted) submitted = paintedtime;
+  if (paintedtime - submitted > totalFrames) submitted = paintedtime - totalFrames;
+
+  let frames = paintedtime - submitted;
+  if (frames <= 0) return;
+
+  let offset = ((submitted * dma.channels) & (dma.samples - 1)) * (dma.samplebits / 8);
+  while (frames > 0) {
+    const framesToEnd = Math.min(frames, (RING_BUFFER_BYTES - offset) / frameBytes);
+    const length = framesToEnd * frameBytes;
+    SDLSND_Queue(dma.buffer.subarray(offset, offset + length));
+    frames -= framesToEnd;
+    offset = 0;
+  }
+
+  submitted = paintedtime;
 }

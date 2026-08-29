@@ -9,7 +9,7 @@ rather than relying on another test having run first.
 import { describe, test, expect } from "bun:test";
 import { GetWavinfo, ResampleSfx } from "../src/client/snd_mem";
 import { S_PaintChannels } from "../src/client/snd_mix";
-import { S_Init, S_StartSound, S_Update } from "../src/client/snd_dma";
+import { S_Init, S_Shutdown, S_StartSound, S_Update } from "../src/client/snd_dma";
 import { SNDDMA_Init } from "../src/platform/snd";
 import {
   dma,
@@ -23,7 +23,8 @@ import {
   SfxcacheT,
   MAX_CHANNELS,
 } from "../src/client/snd_loc";
-import { cl } from "../src/client/client";
+import { cl, cls } from "../src/client/client";
+import { Cvar_ForceSet } from "../src/qcommon/cvar";
 import { vec3 } from "../src/shared/math";
 import { CvarT } from "../src/shared/q_shared";
 
@@ -259,7 +260,15 @@ describe("platform/snd.ts -- SNDDMA_Init (null driver)", () => {
 
 describe("snd_dma.ts -- S_StartSound / S_Update", () => {
   test("S_StartSound queues a playsound that S_Update consumes into a channel", () => {
+    // rule 13: the SDL platform suite may have run a full client boot with
+    // its own audio accounting in this process; tear that down first so
+    // this suite's S_Init starts from a fresh driver/timeline.
+    S_Shutdown();
+    Cvar_ForceSet("s_initsound", "1"); // the SDL boot suite disables audio init
     S_Init(); // registers cvars, calls SNDDMA_Init, and resets channels/playsounds via S_StopAllSounds
+    // ...and clear the loading plaque the SDL boot suite may have left up:
+    // S_Update faithfully early-returns while cls.disable_screen is set.
+    cls.disable_screen = 0;
 
     const fakeSfx = new SfxT();
     fakeSfx.name = "test/fake.wav";

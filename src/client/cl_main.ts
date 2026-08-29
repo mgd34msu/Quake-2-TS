@@ -14,19 +14,11 @@
 // all three are defined in cl_main.c and are exported from here too.
 //
 // Deviations (see report for the full list):
-// - VID_Init/CDAudio_Init/IN_Init have no platform module yet
-//   (src/platform/vid.ts, src/client/cdaudio.ts's real init, and
-//   src/platform/input.ts all don't exist); S_Init exists
-//   (src/client/snd_dma.ts) but is itself still a pending stub that throws.
-//   All four are guarded here with local no-op stand-ins -- named after
-//   their future owner in each comment -- so CL_Init can complete under
-//   test with `dedicated` falsy, per this brief's explicit instruction.
-//   Con_Init/M_Init/SCR_Init/V_Init are NOT guarded (real calls to their
-//   pending-stub implementations); CL_Init keeps the C call order and may
-//   throw there, exactly as the brief allows ("sibling client stubs may
-//   throw").
-// - Sys_AppActivate/VID_CheckChanges are also missing platform hooks with
-//   no faithful minimal substitute; guarded the same way.
+// - VID_Init/VID_CheckChanges come from src/platform/vid.ts and IN_Init from
+//   src/platform/sdl.ts (re-exported by cl_input.ts under the name client.h
+//   declares). CDAudio_Init/CDAudio_Update stay no-ops: the CD audio track
+//   is not ported. Sys_AppActivate has no ShowWindow/SetForegroundWindow
+//   equivalent and calls vid.ts's VID_Front_f instead.
 // - CL_Setenv_f uses process.env in place of putenv/getenv.
 // - CL_WriteDemoMessage/CL_Stop_f/CL_Record_f/CL_WriteConfiguration use
 //   src/qcommon/files.ts's FS_FOpenFileWrite/FS_Write/FS_FCloseFile instead
@@ -90,7 +82,8 @@ import {
   type CvarT,
 } from "../shared/q_shared";
 import { cl, cls, cl_entities, ConnstateT, CentityT, clCvars } from "./client";
-import { CL_InitInput, CL_SendCmd, IN_Commands, IN_Frame, Sys_SendKeyEvents } from "./cl_input";
+import { CL_InitInput, CL_SendCmd, IN_Commands, IN_Frame, IN_Init, Sys_SendKeyEvents } from "./cl_input";
+import { VID_CheckChanges, VID_Front_f, VID_Init } from "../platform/vid";
 import { CL_PredictMovement } from "./cl_pred";
 import { CL_ClearEffects } from "./cl_fx";
 import { CL_ClearTEnts } from "./cl_tent";
@@ -121,17 +114,17 @@ function fireAndForget(name: string, fn: () => Promise<void>): () => void {
   };
 }
 
-// VID_Init/CDAudio_Init/IN_Init/Sys_AppActivate/VID_CheckChanges -- see file
-// banner. No-op stand-ins for platform modules that don't exist yet.
-function VID_Init(): void {}
+// Sys_AppActivate -- sys_win.c raises and restores the game window
+// (ShowWindow + SetForegroundWindow) when a front end sends a "cmd" packet.
+// vid.ts's VID_Front_f is this port's window-raise, so it stands in here.
+function Sys_AppActivate(): void {
+  VID_Front_f();
+}
+// CDAudio_Init/CDAudio_Update -- cdaudio.ts is an empty placeholder module
+// (`export {}`), so neither exists there yet. Both stay documented no-ops:
+// the CD audio track (cd_win.c/cd_linux.c, redbook playback off a physical
+// disc) is not part of this backend. Real owner is src/client/cdaudio.ts.
 function CDAudio_Init(): void {}
-function IN_Init(): void {}
-function Sys_AppActivate(): void {}
-function VID_CheckChanges(): void {}
-// CDAudio_Update -- cdaudio.ts is currently an empty placeholder module
-// (`export {}`), so CDAudio_Init/CDAudio_Update/CDAudio_Shutdown don't exist
-// there at all yet, unlike the four platform hooks named in the file
-// banner. Same guard treatment; real owner is src/client/cdaudio.ts.
 function CDAudio_Update(): void {}
 
 //======================================================================

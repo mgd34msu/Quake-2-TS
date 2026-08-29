@@ -9,21 +9,16 @@
 // defined in keys.c; ported in keys_impl.ts instead.
 //
 // `extern unsigned sys_frame_time;` (cl_input.c) is defined in
-// linux/sys_linux.c, whose Sys_SendKeyEvents assigns it once per frame
-// (`sys_frame_time = Sys_Milliseconds();`) before pumping the OS event
-// queue -- neither that global nor Sys_SendKeyEvents exist yet in
-// src/platform/sys.ts (out of this brief's SCOPE to add). Both are hosted
-// here instead as a minimal faithful stand-in: sys_frame_time is exported
-// so CL_KeyState/KeyDown/CL_CreateCmd (this file) can read it, and
-// Sys_SendKeyEvents keeps only the one side effect this port's callers
-// actually depend on (the timestamp latch) -- the real OS event pump this
-// function wraps in C is dropped, since no platform input module exists
-// yet. Reported deviation; true owner is whoever ports linux/sys_linux.c.
+// linux/sys_linux.c beside Sys_SendKeyEvents, which assigns it once per
+// frame before pumping the OS event queue; both live in
+// src/platform/sys.ts and are re-exported here for the C callers that
+// reach them through this file's header section (client.h declares
+// Sys_SendKeyEvents alongside the cl_input.c prototypes).
 //
-// IN_Move/IN_Commands/IN_Frame (linux/in_dinput.c or similar -- mouse and
-// joystick sampling) have no ported platform input module either
-// (src/platform/input.ts does not exist). No-op stand-ins below let
-// CL_CreateCmd/CL_SendCommand run under test; reported deviation.
+// IN_Move/IN_Commands/IN_Frame are the mouse/joystick side of the input
+// backend (win32/in_win.c, linux/rw_x11.c's RW_IN_*); per PORTING.md's
+// platform mapping they live in src/platform/sdl.ts and are re-exported
+// here under the names client.h declares.
 
 import { Cmd_Argv, Cmd_AddCommand } from "../qcommon/cmd";
 import { Cvar_Get, Cvar_Userinfo, userinfo_modified, SetUserinfoModified } from "../qcommon/cvar";
@@ -31,7 +26,8 @@ import { Com_Printf, COM_BlockSequenceCRCByte } from "../qcommon/common";
 import { Netchan_Transmit } from "../qcommon/net_chan";
 import { SizeBuf, SZ_Init, MSG_WriteByte, MSG_WriteLong, MSG_WriteString, MSG_WriteDeltaUsercmd } from "../qcommon/sizebuf";
 import { ClcOpsT } from "../qcommon/qcommon";
-import { Sys_Milliseconds } from "../platform/sys";
+import { Sys_SendKeyEvents, sys_frame_time } from "../platform/sys";
+import { IN_Commands, IN_Frame, IN_Init, IN_Move, IN_Shutdown } from "../platform/sdl";
 import { PITCH, YAW, UsercmdT, SHORT2ANGLE, ANGLE2SHORT, type CvarT } from "../shared/q_shared";
 import { VectorCopy } from "../shared/math";
 import { cl, cls, ConnstateT, KeydestT, KbuttonT, clCvars, in_klook, in_strafe, in_speed } from "./client";
@@ -60,21 +56,13 @@ state bit 2 is edge triggered on the down to up transition
 ===============================================================================
 */
 
-// sys_frame_time -- see file banner. old_sys_frame_time/frame_msec are real
-// cl_input.c file-scope globals.
-export let sys_frame_time = 0;
+// old_sys_frame_time/frame_msec are real cl_input.c file-scope globals;
+// sys_frame_time and Sys_SendKeyEvents belong to the platform layer -- see
+// file banner.
+export { Sys_SendKeyEvents, sys_frame_time };
+export { IN_Commands, IN_Frame, IN_Init, IN_Move, IN_Shutdown };
 let old_sys_frame_time = 0;
 let frame_msec = 0;
-
-// Sys_SendKeyEvents -- see file banner.
-export function Sys_SendKeyEvents(): void {
-  sys_frame_time = Sys_Milliseconds();
-}
-
-// IN_Move/IN_Commands/IN_Frame -- see file banner.
-export function IN_Move(_cmd: UsercmdT): void {}
-export function IN_Commands(): void {}
-export function IN_Frame(): void {}
 
 // in_klook/in_strafe/in_speed come from client.ts (extern'd in client.h, see
 // that file's ownership note). The rest of cl_input.c's kbutton_t globals are
