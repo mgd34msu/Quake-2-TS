@@ -424,6 +424,32 @@ Properly handles partial reads
 */
 const MAX_READ = 0x10000; // read in blocks of 64k
 
+/*
+FS_ReadRaw -- fread semantics: returns the byte count actually read (0 at a
+clean EOF), never errors. The C call sites this serves (SV_ReadServerFile's
+latched-cvar loop, sv_send.c's demo-message reads) use bare fread() and
+treat a short read as end-of-data; FS_Read below keeps FS_Read's C
+semantics (retry then ERR_FATAL), which those callers must NOT use --
+Com_Error's fatal path runs the full engine shutdown before throwing.
+*/
+export function FS_ReadRaw(buffer: Uint8Array, len: number, handle: number): number {
+  const h = fs_open_handles.get(handle);
+  if (!h) return 0;
+  let total = 0;
+  while (total < len) {
+    let n: number;
+    try {
+      n = readSync(h.fd, buffer, total, len - total, h.position);
+    } catch {
+      n = 0;
+    }
+    if (n <= 0) break;
+    total += n;
+    h.position += n;
+  }
+  return total;
+}
+
 export function FS_Read(buffer: Uint8Array, len: number, handle: number): void {
   const h = fs_open_handles.get(handle);
   if (!h) {

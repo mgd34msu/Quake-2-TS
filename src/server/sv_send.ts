@@ -4,7 +4,7 @@ import { NetsrcT, NetadrtypeT, SysError, SvcOpsT, MAX_MSGLEN } from "../qcommon/
 import { Netchan_OutOfBandPrint, Netchan_Transmit, net_from } from "../qcommon/net_chan";
 import { SizeBuf, SZ_Init, SZ_Clear, SZ_Write, MSG_WriteByte, MSG_WriteShort, MSG_WriteString, MSG_WritePos } from "../qcommon/sizebuf";
 import { Com_Printf, Com_Error, dedicated } from "../qcommon/common";
-import { FS_FCloseFile, FS_Read } from "../qcommon/files";
+import { FS_ReadRaw, FS_FCloseFile, FS_Read } from "../qcommon/files";
 import { curtime } from "../platform/sys";
 import { CM_PointLeafnum, CM_LeafArea, CM_LeafCluster, CM_ClusterPHS, CM_ClusterPVS, CM_AreasConnected } from "../qcommon/cmodel";
 import { Com_sprintf, ERR_FATAL, ERR_DROP, PRINT_HIGH, MulticastT, CHAN_RELIABLE, ATTN_NONE } from "../shared/q_shared";
@@ -381,30 +381,21 @@ export function SV_SendClientMessages(): void {
       // sanctioned FS boundary (files.ts), so any thrown error here is
       // treated the same way the original treats a short/failed fread: the
       // demo is done. See report.
-      try {
-        const lenBuf = new Uint8Array(4);
-        FS_Read(lenBuf, 4, demofile);
-        msglen = new DataView(lenBuf.buffer, lenBuf.byteOffset, 4).getInt32(0, true);
-      } catch (e) {
-        if (e instanceof SysError) {
-          SV_DemoCompleted();
-          return;
-        }
-        throw e;
+      // C: `r = fread (&msglen, 4, 1, sv.demofile); if (r != 1) { done }`
+      const lenBuf = new Uint8Array(4);
+      if (FS_ReadRaw(lenBuf, 4, demofile) !== 4) {
+        SV_DemoCompleted();
+        return;
       }
+      msglen = new DataView(lenBuf.buffer, lenBuf.byteOffset, 4).getInt32(0, true);
       if (msglen === -1) {
         SV_DemoCompleted();
         return;
       }
       if (msglen > MAX_MSGLEN) Com_Error(ERR_DROP, "SV_SendClientMessages: msglen > MAX_MSGLEN");
-      try {
-        FS_Read(msgbuf, msglen, demofile);
-      } catch (e) {
-        if (e instanceof SysError) {
-          SV_DemoCompleted();
-          return;
-        }
-        throw e;
+      if (FS_ReadRaw(msgbuf, msglen, demofile) !== msglen) {
+        SV_DemoCompleted();
+        return;
       }
     }
   }

@@ -21,7 +21,7 @@ import { SysError, NetadrT, NetsrcT, PORT_MASTER, SvcOpsT, PROTOCOL_VERSION } fr
 import { Com_Printf, Com_DPrintf, Info_Print, dedicated } from "../qcommon/common";
 import { Cvar_Set, Cvar_VariableValue, Cvar_VariableString, Cvar_ForceSet, Cvar_Serverinfo, cvar_vars } from "../qcommon/cvar";
 import { Cmd_Argc, Cmd_Argv, Cmd_Args, Cmd_AddCommand } from "../qcommon/cmd";
-import { FS_Gamedir, FS_CreatePath, FS_FOpenFile, FS_FCloseFile, FS_Read, FS_ListFiles, FS_LoadFile, FS_WriteFile, FS_RemoveFile, FS_ReadRawFile, FS_FOpenFileWrite, FS_Write } from "../qcommon/files";
+import { FS_Gamedir, FS_CreatePath, FS_FOpenFile, FS_FCloseFile, FS_Read, FS_ReadRaw, FS_ListFiles, FS_LoadFile, FS_WriteFile, FS_RemoveFile, FS_ReadRawFile, FS_FOpenFileWrite, FS_Write } from "../qcommon/files";
 import { SizeBuf, SZ_Init, MSG_WriteByte, MSG_WriteShort, MSG_WriteLong, MSG_WriteString } from "../qcommon/sizebuf";
 import { CM_WritePortalState, CM_ReadPortalState } from "../qcommon/cmodel";
 import { MAX_MAP_AREAPORTALS } from "../qcommon/qfiles";
@@ -432,20 +432,14 @@ async function SV_ReadServerFile(): Promise<void> {
   const mapcmd = bytesToNulString(mapcmdBuf);
 
   // read all CVAR_LATCH cvars -- these will be things like coop, skill,
-  // deathmatch, etc. FS_Read throws on any short read including a clean EOF
-  // (see followups.md); that thrown SysError is this loop's only "no more
-  // pairs" signal, matching the sv_send.ts demo-read precedent.
+  // deathmatch, etc. C: `if (!fread (name, 1, sizeof(name), f)) break;` --
+  // a clean EOF is the loop's exit, via FS_ReadRaw's fread semantics.
   for (;;) {
     const nameBuf = new Uint8Array(MAX_OSPATH);
-    try {
-      FS_Read(nameBuf, MAX_OSPATH, open.handle);
-    } catch (e) {
-      if (e instanceof SysError) break;
-      throw e;
-    }
+    if (FS_ReadRaw(nameBuf, MAX_OSPATH, open.handle) !== MAX_OSPATH) break;
 
     const stringBuf = new Uint8Array(128);
-    FS_Read(stringBuf, 128, open.handle);
+    FS_ReadRaw(stringBuf, 128, open.handle);
 
     const cvarName = bytesToNulString(nameBuf);
     const cvarValue = bytesToNulString(stringBuf);
