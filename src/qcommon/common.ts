@@ -116,6 +116,15 @@ export function SetConPrintHandler(fn: (msg: string) => void): void {
   conPrintHandler = fn;
 }
 
+// common.c calls straight into sv_main.c/cl_main.c; qcommon cannot import
+// either side, so main.ts registers them (same idiom as SetConPrintHandler).
+let svShutdownHandler: ((finalmsg: string, reconnect: boolean) => void) | null = null;
+let clDropHandler: (() => void) | null = null;
+export function SetErrorHandlers(svShutdown: (finalmsg: string, reconnect: boolean) => void, clDrop: () => void): void {
+  svShutdownHandler = svShutdown;
+  clDropHandler = clDrop;
+}
+
 // common.c's `int time_before_game, time_after_game, time_before_ref,
 // time_after_ref;` (qcommon.h externs them). Written from sv_main.ts and the
 // renderer, read by Qcommon_Frame's host_speeds report in src/main.ts, so
@@ -223,20 +232,18 @@ export function Com_Error(code: number, fmt: string, ...args: Array<string | num
   recursive = true;
 
   if (code === ERR_DISCONNECT) {
-    // CL_Drop() -- omitted: client not yet ported (owning module: src/client/cl_main.ts)
+    if (clDropHandler) clDropHandler();
     recursive = false;
     throw new ComError(code, msg);
   } else if (code === ERR_DROP) {
     Com_Printf(`********************\nERROR: ${msg}\n********************\n`);
-    // SV_Shutdown(va("Server crashed: %s\n", msg), false) -- omitted: server not
-    // yet ported (owning module: src/server/sv_init.ts)
-    // CL_Drop() -- omitted: client not yet ported (owning module: src/client/cl_main.ts)
+    if (svShutdownHandler) svShutdownHandler(`Server crashed: ${msg}\n`, false);
+    if (clDropHandler) clDropHandler();
     recursive = false;
     throw new ComError(code, msg);
   }
 
-  // SV_Shutdown(va("Server fatal crashed: %s\n", msg), false) -- omitted (server)
-  // CL_Shutdown() -- omitted (client)
+  if (svShutdownHandler) svShutdownHandler(`Server fatal crashed: ${msg}\n`, false);
   if (logfile !== null) {
     closeSync(logfile);
     logfile = null;
@@ -246,8 +253,7 @@ export function Com_Error(code: number, fmt: string, ...args: Array<string | num
 
 // Both client and server can use this, and it will do the apropriate things.
 export function Com_Quit(): void {
-  // SV_Shutdown("Server quit\n", false) -- omitted: server not yet ported (src/server/sv_init.ts)
-  // CL_Shutdown() -- omitted: client not yet ported (src/client/cl_main.ts)
+  if (svShutdownHandler) svShutdownHandler("Server quit\n", false);
   if (logfile !== null) {
     closeSync(logfile);
     logfile = null;

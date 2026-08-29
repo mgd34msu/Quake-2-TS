@@ -387,7 +387,10 @@ export function R_BuildLightMap(surf: MsurfaceT, dest: Uint8Array, stride: numbe
   const smax = (surf.extents[0] >> 4) + 1;
   const tmax = (surf.extents[1] >> 4) + 1;
   const size = smax * tmax;
-  if (size > s_blocklights.length >> 4) {
+  // C: sizeof(s_blocklights)>>4 -- BYTES (float[34*34*3] = 13872 -> 867),
+  // not element count (3468 -> 216, which false-errors ordinary 17x17+
+  // lightmaps the moment a dynamic light or lightstyle touches them).
+  if (size > (s_blocklights.length * Float32Array.BYTES_PER_ELEMENT) >> 4) {
     ri.Sys_Error(ERR_DROP, "Bad s_blocklights size");
   }
 
