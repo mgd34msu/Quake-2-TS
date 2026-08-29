@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { NetadrT, NetadrtypeT, NetsrcT } from "../src/qcommon/qcommon";
 import { SizeBuf, SZ_Init, MSG_BeginReading, MSG_ReadLong, MSG_ReadByte, MSG_WriteByte } from "../src/qcommon/sizebuf";
 import { Cvar_Get } from "../src/qcommon/cvar";
 import { CVAR_NOSET } from "../src/shared/q_shared";
 import {
+  NET_ClearLoopback,
   NET_StringToAdr,
   NET_AdrToString,
   NET_CompareAdr,
@@ -107,6 +108,10 @@ describe("NET_CompareAdr / NET_CompareBaseAdr / NET_IsLocalAddress", () => {
 });
 
 describe("NET_SendPacket / NET_GetPacket over the loopback ring", () => {
+  beforeEach(() => {
+    NET_ClearLoopback(); // rule 13: earlier suites may have used the rings
+  });
+
   test("round-trips a raw payload from NS_CLIENT to NS_SERVER", () => {
     const adr = loopbackAdr();
     const payload = new Uint8Array([1, 2, 3, 4, 5]);
@@ -141,6 +146,10 @@ describe("NET_SendPacket / NET_GetPacket over the loopback ring", () => {
 });
 
 describe("Netchan_* over loopback", () => {
+  beforeEach(() => {
+    NET_ClearLoopback();
+  });
+
   test("Netchan_Transmit then Netchan_Process delivers an unreliable payload and increments sequence numbers", () => {
     Netchan_Init();
     const adr = loopbackAdr();

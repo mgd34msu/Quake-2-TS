@@ -112,6 +112,7 @@ function setupWorld(traceFn?: TraceFn): void {
   // gameCvars is a module-level singleton (not reset by game.clear()); pin
   // every field these monster files read so a previous test's mutation
   // (e.g. deathmatch) can never leak into this one.
+  gameCvars.maxclients = fakeCvar(1);
   gameCvars.deathmatch = fakeCvar(0);
   gameCvars.skill = fakeCvar(1);
 

@@ -584,3 +584,40 @@ export function SP_monster_chick(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_chick:chick_pain", chick_pain);
+registerSaveFunction("m_chick:chick_die", chick_die);
+registerSaveFunction("m_chick:chick_stand", chick_stand);
+registerSaveFunction("m_chick:chick_walk", chick_walk);
+registerSaveFunction("m_chick:chick_run", chick_run);
+registerSaveFunction("m_chick:chick_dodge", chick_dodge);
+registerSaveFunction("m_chick:chick_attack", chick_attack);
+registerSaveFunction("m_chick:chick_melee", chick_melee);
+registerSaveFunction("m_chick:chick_sight", chick_sight);
+registerSaveMmove("m_chick:chick_move_fidget", chick_move_fidget);
+registerSaveMmove("m_chick:chick_move_stand", chick_move_stand);
+registerSaveMmove("m_chick:chick_move_start_run", chick_move_start_run);
+registerSaveMmove("m_chick:chick_move_run", chick_move_run);
+registerSaveMmove("m_chick:chick_move_walk", chick_move_walk);
+registerSaveMmove("m_chick:chick_move_pain1", chick_move_pain1);
+registerSaveMmove("m_chick:chick_move_pain2", chick_move_pain2);
+registerSaveMmove("m_chick:chick_move_pain3", chick_move_pain3);
+registerSaveMmove("m_chick:chick_move_death2", chick_move_death2);
+registerSaveMmove("m_chick:chick_move_death1", chick_move_death1);
+registerSaveMmove("m_chick:chick_move_duck", chick_move_duck);
+registerSaveMmove("m_chick:chick_move_start_attack1", chick_move_start_attack1);
+registerSaveMmove("m_chick:chick_move_attack1", chick_move_attack1);
+registerSaveMmove("m_chick:chick_move_end_attack1", chick_move_end_attack1);
+registerSaveMmove("m_chick:chick_move_slash", chick_move_slash);
+registerSaveMmove("m_chick:chick_move_end_slash", chick_move_end_slash);
+registerSaveMmove("m_chick:chick_move_start_slash", chick_move_start_slash);

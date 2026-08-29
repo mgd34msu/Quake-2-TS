@@ -437,3 +437,33 @@ export function SP_monster_boss2(self: EdictT): void {
 // boss2_move_fidget is defined (matching m_boss2.c's table) but never wired
 // to a monsterinfo callback in m_boss2.c either -- dead code in the
 // original, preserved faithfully rather than pruned.
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_boss2:boss2_pain", boss2_pain);
+registerSaveFunction("m_boss2:boss2_die", boss2_die);
+registerSaveFunction("m_boss2:boss2_stand", boss2_stand);
+registerSaveFunction("m_boss2:boss2_walk", boss2_walk);
+registerSaveFunction("m_boss2:boss2_run", boss2_run);
+registerSaveFunction("m_boss2:boss2_attack", boss2_attack);
+registerSaveFunction("m_boss2:boss2_search", boss2_search);
+registerSaveFunction("m_boss2:Boss2_CheckAttack", Boss2_CheckAttack);
+registerSaveMmove("m_boss2:boss2_move_stand", boss2_move_stand);
+registerSaveMmove("m_boss2:boss2_move_fidget", boss2_move_fidget);
+registerSaveMmove("m_boss2:boss2_move_walk", boss2_move_walk);
+registerSaveMmove("m_boss2:boss2_move_run", boss2_move_run);
+registerSaveMmove("m_boss2:boss2_move_attack_pre_mg", boss2_move_attack_pre_mg);
+registerSaveMmove("m_boss2:boss2_move_attack_mg", boss2_move_attack_mg);
+registerSaveMmove("m_boss2:boss2_move_attack_post_mg", boss2_move_attack_post_mg);
+registerSaveMmove("m_boss2:boss2_move_attack_rocket", boss2_move_attack_rocket);
+registerSaveMmove("m_boss2:boss2_move_pain_heavy", boss2_move_pain_heavy);
+registerSaveMmove("m_boss2:boss2_move_pain_light", boss2_move_pain_light);
+registerSaveMmove("m_boss2:boss2_move_death", boss2_move_death);

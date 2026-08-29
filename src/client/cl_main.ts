@@ -48,11 +48,6 @@
 //   (cl_parse.ts) is itself still a pending stub that throws before any
 //   dmdl_t parsing would run. The phase-skeleton (precache_check state
 //   machine) is ported faithfully; only that one inner scan is stubbed out.
-// - userinfo_modified (qcommon/cvar.ts) is `export let` with no setter,
-//   unlike this port's usual pattern -- cvar.ts is out of SCOPE, so
-//   CL_SendConnectPacket cannot clear it the way cl_main.c's raw
-//   `userinfo_modified = false;` does (see cl_input.ts's matching note on
-//   CL_SendCmd). Reported follow-up: add setUserinfoModified to cvar.ts.
 // - rcon_client_password/rcon_address/adr0-8/cl_timeout/cl_maxfps/
 //   info_password/info_spectator/name/skin/rate/fov/msg/hand/gender/
 //   gender_auto/precache_*/cheatvars are cl_main.c file-scope globals that
@@ -61,7 +56,7 @@
 //   instead of adding fields to client.ts (out of SCOPE).
 
 import { Cmd_Argc, Cmd_Argv, Cmd_Args, Cmd_AddCommand, Cmd_TokenizeString, Cbuf_AddText, Cbuf_Execute, setCmdForwardToServerHandler } from "../qcommon/cmd";
-import { Cvar_Get, Cvar_Set, Cvar_SetValue, Cvar_VariableValue, Cvar_VariableString, Cvar_Userinfo } from "../qcommon/cvar";
+import { Cvar_Get, Cvar_Set, Cvar_SetValue, Cvar_VariableValue, Cvar_VariableString, Cvar_Userinfo, SetUserinfoModified } from "../qcommon/cvar";
 import { Com_Printf, Com_DPrintf, Com_Error, Com_Quit, Com_ServerState, Info_Print, dedicated, COM_BlockSequenceCRCByte } from "../qcommon/common";
 import { NetadrT, NetadrtypeT, NetsrcT, ComError, ERR_DROP, SvcOpsT, ClcOpsT, PROTOCOL_VERSION, PORT_SERVER, MAX_MSGLEN } from "../qcommon/qcommon";
 import { NET_StringToAdr, NET_AdrToString, NET_CompareAdr, NET_IsLocalAddress, NET_SendPacket, NET_GetPacket, NET_Config } from "../platform/net_udp";
@@ -436,8 +431,7 @@ export function CL_SendConnectPacket(): void {
   if (adr.port === 0) adr.port = PORT_SERVER;
 
   const port = Cvar_VariableValue("qport");
-  // C clears userinfo_modified here; see this file's banner for why this
-  // port cannot (cvar.ts exports no setter, out of SCOPE).
+  SetUserinfoModified(false);
 
   Netchan_OutOfBandPrint(NetsrcT.NS_CLIENT, adr, 'connect %i %i %i "%s"\n', PROTOCOL_VERSION, port, cls.challenge, Cvar_Userinfo());
 }

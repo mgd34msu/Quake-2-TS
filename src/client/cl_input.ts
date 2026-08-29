@@ -26,7 +26,7 @@
 // CL_CreateCmd/CL_SendCommand run under test; reported deviation.
 
 import { Cmd_Argv, Cmd_AddCommand } from "../qcommon/cmd";
-import { Cvar_Get, Cvar_Userinfo, userinfo_modified } from "../qcommon/cvar";
+import { Cvar_Get, Cvar_Userinfo, userinfo_modified, SetUserinfoModified } from "../qcommon/cvar";
 import { Com_Printf, COM_BlockSequenceCRCByte } from "../qcommon/common";
 import { Netchan_Transmit } from "../qcommon/net_chan";
 import { SizeBuf, SZ_Init, MSG_WriteByte, MSG_WriteLong, MSG_WriteString, MSG_WriteDeltaUsercmd } from "../qcommon/sizebuf";
@@ -523,16 +523,9 @@ export function CL_SendCmd(): void {
   }
 
   // send a userinfo update if needed.
-  // C clears the flag here (`userinfo_modified = false;`, a raw extern
-  // assignment). cvar.ts's `userinfo_modified` is `export let` with no
-  // setter (unlike this port's usual export-let-plus-setter pattern) and
-  // cvar.ts is outside this brief's SCOPE, so the flag cannot be cleared
-  // from here -- every CL_SendCmd while a CVAR_USERINFO cvar is dirty
-  // resends the full userinfo string instead of just once. Reported
-  // deviation/follow-up: add a setUserinfoModified(false) export to
-  // cvar.ts.
   if (userinfo_modified) {
     CL_FixUpGender();
+    SetUserinfoModified(false);
     MSG_WriteByte(cls.netchan.message, ClcOpsT.clc_userinfo);
     MSG_WriteString(cls.netchan.message, Cvar_Userinfo());
   }

@@ -351,3 +351,32 @@ export function SP_monster_gladiator(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_gladiator:gladiator_pain", gladiator_pain);
+registerSaveFunction("m_gladiator:gladiator_die", gladiator_die);
+registerSaveFunction("m_gladiator:gladiator_stand", gladiator_stand);
+registerSaveFunction("m_gladiator:gladiator_walk", gladiator_walk);
+registerSaveFunction("m_gladiator:gladiator_run", gladiator_run);
+registerSaveFunction("m_gladiator:gladiator_attack", gladiator_attack);
+registerSaveFunction("m_gladiator:gladiator_melee", gladiator_melee);
+registerSaveFunction("m_gladiator:gladiator_sight", gladiator_sight);
+registerSaveFunction("m_gladiator:gladiator_idle", gladiator_idle);
+registerSaveFunction("m_gladiator:gladiator_search", gladiator_search);
+registerSaveMmove("m_gladiator:gladiator_move_stand", gladiator_move_stand);
+registerSaveMmove("m_gladiator:gladiator_move_walk", gladiator_move_walk);
+registerSaveMmove("m_gladiator:gladiator_move_run", gladiator_move_run);
+registerSaveMmove("m_gladiator:gladiator_move_attack_melee", gladiator_move_attack_melee);
+registerSaveMmove("m_gladiator:gladiator_move_attack_gun", gladiator_move_attack_gun);
+registerSaveMmove("m_gladiator:gladiator_move_pain", gladiator_move_pain);
+registerSaveMmove("m_gladiator:gladiator_move_pain_air", gladiator_move_pain_air);
+registerSaveMmove("m_gladiator:gladiator_move_death", gladiator_move_death);

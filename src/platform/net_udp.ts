@@ -133,6 +133,14 @@ class LoopbackT {
 
 const loopbacks: [LoopbackT, LoopbackT] = [new LoopbackT(), new LoopbackT()];
 
+// Test seam (CM_MarkMapLoadedForTesting precedent): the loopback rings are
+// process-wide singletons; suites that drive a real connect flow reset them
+// so later suites see empty rings regardless of file order.
+export function NET_ClearLoopback(): void {
+  loopbacks[0] = new LoopbackT();
+  loopbacks[1] = new LoopbackT();
+}
+
 function NET_GetLoopPacket(sock: NetsrcT, out_from: NetadrT, message: SizeBuf): boolean {
   const loop = loopbacks[sock];
 

@@ -1668,3 +1668,54 @@ export function SP_func_killbox(ent: EdictT): void {
   ent.use = use_killbox;
   ent.svflags = SVF_NOCLIENT;
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("g_func:Move_Done", Move_Done);
+registerSaveFunction("g_func:Move_Final", Move_Final);
+registerSaveFunction("g_func:Move_Begin", Move_Begin);
+registerSaveFunction("g_func:Think_AccelMove", Think_AccelMove);
+registerSaveFunction("g_func:AngleMove_Done", AngleMove_Done);
+registerSaveFunction("g_func:AngleMove_Final", AngleMove_Final);
+registerSaveFunction("g_func:AngleMove_Begin", AngleMove_Begin);
+registerSaveFunction("g_func:plat_go_down", plat_go_down);
+registerSaveFunction("g_func:Touch_Plat_Center", Touch_Plat_Center);
+registerSaveFunction("g_func:plat_blocked", plat_blocked);
+registerSaveFunction("g_func:Use_Plat", Use_Plat);
+registerSaveFunction("g_func:rotating_touch", rotating_touch);
+registerSaveFunction("g_func:rotating_use", rotating_use);
+registerSaveFunction("g_func:rotating_blocked", rotating_blocked);
+registerSaveFunction("g_func:button_return", button_return);
+registerSaveFunction("g_func:button_use", button_use);
+registerSaveFunction("g_func:button_killed", button_killed);
+registerSaveFunction("g_func:button_touch", button_touch);
+registerSaveFunction("g_func:door_go_down", door_go_down);
+registerSaveFunction("g_func:Touch_DoorTrigger", Touch_DoorTrigger);
+registerSaveFunction("g_func:door_blocked", door_blocked);
+registerSaveFunction("g_func:door_use", door_use);
+registerSaveFunction("g_func:door_killed", door_killed);
+registerSaveFunction("g_func:door_touch", door_touch);
+registerSaveFunction("g_func:Think_CalcMoveSpeed", Think_CalcMoveSpeed);
+registerSaveFunction("g_func:Think_SpawnDoorTrigger", Think_SpawnDoorTrigger);
+registerSaveFunction("g_func:train_next", train_next);
+registerSaveFunction("g_func:train_blocked", train_blocked);
+registerSaveFunction("g_func:trigger_elevator_use", trigger_elevator_use);
+registerSaveFunction("g_func:trigger_elevator_init", trigger_elevator_init);
+registerSaveFunction("g_func:func_timer_use", func_timer_use);
+registerSaveFunction("g_func:func_timer_think", func_timer_think);
+registerSaveFunction("g_func:func_conveyor_use", func_conveyor_use);
+registerSaveFunction("g_func:door_secret_move2", door_secret_move2);
+registerSaveFunction("g_func:door_secret_move4", door_secret_move4);
+registerSaveFunction("g_func:door_secret_move6", door_secret_move6);
+registerSaveFunction("g_func:door_secret_blocked", door_secret_blocked);
+registerSaveFunction("g_func:door_secret_use", door_secret_use);
+registerSaveFunction("g_func:door_secret_die", door_secret_die);
+registerSaveFunction("g_func:use_killbox", use_killbox);

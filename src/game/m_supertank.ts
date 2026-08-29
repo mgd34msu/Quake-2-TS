@@ -451,3 +451,37 @@ export function SP_monster_supertank(self: EdictT): void {
 // are defined (matching the C source's tables and forward declarations) but
 // never wired to a monsterinfo callback in m_supertank.c either -- dead code
 // in the original, preserved faithfully rather than pruned.
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_supertank:BossExplode", BossExplode);
+registerSaveFunction("m_supertank:supertank_pain", supertank_pain);
+registerSaveFunction("m_supertank:supertank_die", supertank_die);
+registerSaveFunction("m_supertank:supertank_stand", supertank_stand);
+registerSaveFunction("m_supertank:supertank_walk", supertank_walk);
+registerSaveFunction("m_supertank:supertank_run", supertank_run);
+registerSaveFunction("m_supertank:supertank_attack", supertank_attack);
+registerSaveFunction("m_supertank:supertank_search", supertank_search);
+registerSaveMmove("m_supertank:supertank_move_stand", supertank_move_stand);
+registerSaveMmove("m_supertank:supertank_move_run", supertank_move_run);
+registerSaveMmove("m_supertank:supertank_move_forward", supertank_move_forward);
+registerSaveMmove("m_supertank:supertank_move_turn_right", supertank_move_turn_right);
+registerSaveMmove("m_supertank:supertank_move_turn_left", supertank_move_turn_left);
+registerSaveMmove("m_supertank:supertank_move_pain3", supertank_move_pain3);
+registerSaveMmove("m_supertank:supertank_move_pain2", supertank_move_pain2);
+registerSaveMmove("m_supertank:supertank_move_pain1", supertank_move_pain1);
+registerSaveMmove("m_supertank:supertank_move_death", supertank_move_death);
+registerSaveMmove("m_supertank:supertank_move_backward", supertank_move_backward);
+registerSaveMmove("m_supertank:supertank_move_attack4", supertank_move_attack4);
+registerSaveMmove("m_supertank:supertank_move_attack3", supertank_move_attack3);
+registerSaveMmove("m_supertank:supertank_move_attack2", supertank_move_attack2);
+registerSaveMmove("m_supertank:supertank_move_attack1", supertank_move_attack1);
+registerSaveMmove("m_supertank:supertank_move_end_attack1", supertank_move_end_attack1);

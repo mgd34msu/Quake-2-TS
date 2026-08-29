@@ -584,3 +584,37 @@ export function SP_misc_insane(self: EdictT): void {
     self.s.skinnum = Math.floor(Math.random() * 3);
   }
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_insane:insane_pain", insane_pain);
+registerSaveFunction("m_insane:insane_die", insane_die);
+registerSaveFunction("m_insane:insane_stand", insane_stand);
+registerSaveFunction("m_insane:insane_walk", insane_walk);
+registerSaveFunction("m_insane:insane_run", insane_run);
+registerSaveMmove("m_insane:insane_move_stand_normal", insane_move_stand_normal);
+registerSaveMmove("m_insane:insane_move_stand_insane", insane_move_stand_insane);
+registerSaveMmove("m_insane:insane_move_uptodown", insane_move_uptodown);
+registerSaveMmove("m_insane:insane_move_downtoup", insane_move_downtoup);
+registerSaveMmove("m_insane:insane_move_jumpdown", insane_move_jumpdown);
+registerSaveMmove("m_insane:insane_move_down", insane_move_down);
+registerSaveMmove("m_insane:insane_move_walk_normal", insane_move_walk_normal);
+registerSaveMmove("m_insane:insane_move_run_normal", insane_move_run_normal);
+registerSaveMmove("m_insane:insane_move_walk_insane", insane_move_walk_insane);
+registerSaveMmove("m_insane:insane_move_run_insane", insane_move_run_insane);
+registerSaveMmove("m_insane:insane_move_stand_pain", insane_move_stand_pain);
+registerSaveMmove("m_insane:insane_move_stand_death", insane_move_stand_death);
+registerSaveMmove("m_insane:insane_move_crawl", insane_move_crawl);
+registerSaveMmove("m_insane:insane_move_runcrawl", insane_move_runcrawl);
+registerSaveMmove("m_insane:insane_move_crawl_pain", insane_move_crawl_pain);
+registerSaveMmove("m_insane:insane_move_crawl_death", insane_move_crawl_death);
+registerSaveMmove("m_insane:insane_move_cross", insane_move_cross);
+registerSaveMmove("m_insane:insane_move_struggle_cross", insane_move_struggle_cross);

@@ -434,3 +434,40 @@ export function SP_monster_flyer(self: EdictT): void {
 
   flymonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_flyer:flyer_pain", flyer_pain);
+registerSaveFunction("m_flyer:flyer_die", flyer_die);
+registerSaveFunction("m_flyer:flyer_stand", flyer_stand);
+registerSaveFunction("m_flyer:flyer_walk", flyer_walk);
+registerSaveFunction("m_flyer:flyer_run", flyer_run);
+registerSaveFunction("m_flyer:flyer_attack", flyer_attack);
+registerSaveFunction("m_flyer:flyer_melee", flyer_melee);
+registerSaveFunction("m_flyer:flyer_sight", flyer_sight);
+registerSaveFunction("m_flyer:flyer_idle", flyer_idle);
+registerSaveMmove("m_flyer:flyer_move_stand", flyer_move_stand);
+registerSaveMmove("m_flyer:flyer_move_walk", flyer_move_walk);
+registerSaveMmove("m_flyer:flyer_move_run", flyer_move_run);
+registerSaveMmove("m_flyer:flyer_move_start", flyer_move_start);
+registerSaveMmove("m_flyer:flyer_move_stop", flyer_move_stop);
+registerSaveMmove("m_flyer:flyer_move_rollright", flyer_move_rollright);
+registerSaveMmove("m_flyer:flyer_move_rollleft", flyer_move_rollleft);
+registerSaveMmove("m_flyer:flyer_move_pain3", flyer_move_pain3);
+registerSaveMmove("m_flyer:flyer_move_pain2", flyer_move_pain2);
+registerSaveMmove("m_flyer:flyer_move_pain1", flyer_move_pain1);
+registerSaveMmove("m_flyer:flyer_move_defense", flyer_move_defense);
+registerSaveMmove("m_flyer:flyer_move_bankright", flyer_move_bankright);
+registerSaveMmove("m_flyer:flyer_move_bankleft", flyer_move_bankleft);
+registerSaveMmove("m_flyer:flyer_move_attack2", flyer_move_attack2);
+registerSaveMmove("m_flyer:flyer_move_start_melee", flyer_move_start_melee);
+registerSaveMmove("m_flyer:flyer_move_end_melee", flyer_move_end_melee);
+registerSaveMmove("m_flyer:flyer_move_loop_melee", flyer_move_loop_melee);

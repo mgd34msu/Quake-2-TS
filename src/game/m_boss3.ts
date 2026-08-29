@@ -63,3 +63,16 @@ export function SP_monster_boss3_stand(self: EdictT): void {
   self.nextthink = level.time + FRAMETIME;
   gi.linkentity(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_boss3:Use_Boss3", Use_Boss3);
+registerSaveFunction("m_boss3:Think_Boss3Stand", Think_Boss3Stand);

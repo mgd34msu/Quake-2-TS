@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { Cvar_ForceSet, Cvar_Get } from "../src/qcommon/cvar";
 import { Cbuf_AddText, Cbuf_Execute, Cmd_ExecuteString } from "../src/qcommon/cmd";
 import { CVAR_NOSET } from "../src/shared/q_shared";
-import { NET_Shutdown } from "../src/platform/net_udp";
+import { NET_ClearLoopback, NET_Shutdown } from "../src/platform/net_udp";
 import { Qcommon_Init, runFrames } from "../src/main";
 import { sv, ServerStateT } from "../src/server/server";
 import { SV_Shutdown, SV_Frame } from "../src/server/sv_main";
@@ -289,6 +289,7 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
       // CL_Disconnect chains into pending-stub sibling calls once past
       // ca_disconnected; harmless during teardown.
     }
+    NET_ClearLoopback(); // rule 13: don't leak ring contents into later suites
     SV_Shutdown("cl_main test finished\n", false);
     await NET_Shutdown();
     rmSync(tmpRoot, { recursive: true, force: true });
@@ -299,7 +300,7 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
     expect(() => CL_Init()).not.toThrow();
   });
 
-  test("'connect localhost' (issued in beforeAll, before the server booted) drives ca_connecting -> ca_connected over the real loopback rings once the server comes up, then stops at CL_ParseServerMessage", async () => {
+  test("'connect localhost' (issued in beforeAll, before the server booted) drives ca_connecting -> ca_connected over the real loopback rings once the server comes up, then proceeds through ClientConnect/ClientUserinfoChanged/ClientBegin before stopping in cmodel.ts's area-portal code", async () => {
     // beforeAll already issued "connect localhost" and confirmed
     // ca_connecting before booting the server -- see its comment for why
     // the ordering matters (CL_Connect_f's SV_Shutdown-if-hosting branch).
@@ -312,9 +313,14 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
     // network-layer step below (this unit's SCOPE) worked in manual
     // reproduction; how much further the state machine gets past
     // SVC_DirectConnect depends on modules outside this brief's SCOPE
-    // (src/game, src/ctf, cl_parse.ts's CL_ParseServerMessage pending
-    // stub), so any exception past that point is recorded as "stopped
-    // here" rather than failing the test -- see this test's report note.
+    // (src/game, src/ctf), so any exception past that point is recorded as
+    // "stopped here" rather than failing the test -- see this test's report
+    // note. This first loop's `reachedConnected` used to never go true: a
+    // fresh-boot ClientConnect crashed inside its own call into
+    // ClientUserinfoChanged (p_client.ts's `client.pers` dereference on an
+    // edict recovered by a stale `entIn.s.number`, root-caused and fixed
+    // there -- see that file's edictFromBoundary/EDICT_NUM comments), which
+    // this unit's SV_Frame call surfaced before the client ever saw a reply.
     let reachedConnected = false;
     let stoppedAt: string | null = null;
 
@@ -346,12 +352,30 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
       if (cls.state === ConnstateT.ca_connected) reachedConnected = true;
     }
 
+    // The connect/challenge/connect handshake (cl_main.ts/cl_input.ts, this
+    // unit's SCOPE) now reliably reaches ca_connected -- proof the fresh-boot
+    // ClientConnect/ClientUserinfoChanged crash described above no longer
+    // stops it here.
+    expect(reachedConnected).toBe(true);
+
     if (reachedConnected) {
       // Once ca_connected, CL_ConnectionlessPacket already queued a "new"
-      // clc_stringcmd on cls.netchan.message. One more client->server->client
-      // round trip carries the server's svc_serverdata reply into
-      // CL_ParseServerMessage (cl_parse.ts), a pending stub that always
-      // throws -- this is "as far as sibling stubs allow" per this brief.
+      // clc_stringcmd on cls.netchan.message. Further client->server->client
+      // round trips carry that "new" (server replies with serverdata/
+      // configstrings/baselines), then a "begin" once the client has them,
+      // into the server's SV_Begin_f -> the game library's ClientBegin --
+      // all of which now run to completion (ClientConnect/
+      // ClientUserinfoChanged/ClientBegin are no longer where this stops).
+      // As of this test, it stops one step further in, inside ClientBegin's
+      // gi.multicast(MZ_LOGIN) call: SV_Multicast -> CM_AreasConnected
+      // (src/qcommon/cmodel.ts) reads `map_areas[area1]` and gets
+      // `undefined` -- this test's synthetic box-room BSP (see
+      // buildBoxRoomBsp) has no area-portal lump data for cmodel.ts to
+      // populate `map_areas` from, and/or cmodel.ts's CM_LoadMap does not
+      // build it correctly for a map this minimal. Either way, that's
+      // src/qcommon/cmodel.ts's territory, outside this brief's SCOPE
+      // (src/game/p_client.ts, src/qcommon/cvar.ts, src/client/cl_main.ts,
+      // src/client/cl_input.ts) -- reported as a follow-up, not fixed here.
       for (let tick = 0; tick < 10 && stoppedAt === null; tick++) {
         CL_SendCommand();
         try {
@@ -363,15 +387,12 @@ describe("cl_main.ts -- real loopback connect against a booted server", () => {
       }
     }
 
-    // Depth reached is one of:
-    //  - "not yet ported: CL_ParseServerMessage" (cl_parse.ts pending stub,
-    //    the expected/ideal stopping point this unit's networking can reach)
-    //  - a game-layer exception from src/game or src/ctf raised while
-    //    SVC_DirectConnect's SV_Frame call runs the game library's
-    //    ClientConnect/ClientUserinfoChanged (out of this unit's SCOPE)
-    // Either way, this unit's own connect/challenge/connect state machine
-    // (cl_main.ts/cl_input.ts) is proven to have run correctly up to the
-    // point something outside this SCOPE took over.
+    // Depth reached is a non-null `stoppedAt` message from outside this
+    // unit's SCOPE (currently cmodel.ts's CM_AreasConnected, see above) --
+    // this unit's own connect/challenge/connect state machine
+    // (cl_main.ts/cl_input.ts) is proven to run correctly all the way to
+    // ca_connected (asserted above) and beyond, up to the point something
+    // outside this SCOPE took over.
     expect(stoppedAt).not.toBeNull();
   });
 });

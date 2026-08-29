@@ -562,3 +562,37 @@ export function SP_monster_brain(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_brain:brain_pain", brain_pain);
+registerSaveFunction("m_brain:brain_die", brain_die);
+registerSaveFunction("m_brain:brain_stand", brain_stand);
+registerSaveFunction("m_brain:brain_walk", brain_walk);
+registerSaveFunction("m_brain:brain_run", brain_run);
+registerSaveFunction("m_brain:brain_dodge", brain_dodge);
+registerSaveFunction("m_brain:brain_melee", brain_melee);
+registerSaveFunction("m_brain:brain_sight", brain_sight);
+registerSaveFunction("m_brain:brain_search", brain_search);
+registerSaveFunction("m_brain:brain_idle", brain_idle);
+registerSaveMmove("m_brain:brain_move_stand", brain_move_stand);
+registerSaveMmove("m_brain:brain_move_idle", brain_move_idle);
+registerSaveMmove("m_brain:brain_move_walk1", brain_move_walk1);
+registerSaveMmove("m_brain:brain_move_defense", brain_move_defense);
+registerSaveMmove("m_brain:brain_move_pain3", brain_move_pain3);
+registerSaveMmove("m_brain:brain_move_pain2", brain_move_pain2);
+registerSaveMmove("m_brain:brain_move_pain1", brain_move_pain1);
+registerSaveMmove("m_brain:brain_move_duck", brain_move_duck);
+registerSaveMmove("m_brain:brain_move_death2", brain_move_death2);
+registerSaveMmove("m_brain:brain_move_death1", brain_move_death1);
+registerSaveMmove("m_brain:brain_move_attack1", brain_move_attack1);
+registerSaveMmove("m_brain:brain_move_attack2", brain_move_attack2);
+registerSaveMmove("m_brain:brain_move_run", brain_move_run);

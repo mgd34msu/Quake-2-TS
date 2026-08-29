@@ -725,3 +725,36 @@ export function MakronToss(self: EdictT): void {
   ent.target = self.target;
   VectorCopy(self.s.origin, ent.s.origin);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_boss32:makron_torso_think", makron_torso_think);
+registerSaveFunction("m_boss32:makron_pain", makron_pain);
+registerSaveFunction("m_boss32:makron_die", makron_die);
+registerSaveFunction("m_boss32:MakronSpawn", MakronSpawn);
+registerSaveFunction("m_boss32:makron_stand", makron_stand);
+registerSaveFunction("m_boss32:makron_walk", makron_walk);
+registerSaveFunction("m_boss32:makron_run", makron_run);
+registerSaveFunction("m_boss32:makron_attack", makron_attack);
+registerSaveFunction("m_boss32:makron_sight", makron_sight);
+registerSaveFunction("m_boss32:Makron_CheckAttack", Makron_CheckAttack);
+registerSaveMmove("m_boss32:makron_move_stand", makron_move_stand);
+registerSaveMmove("m_boss32:makron_move_run", makron_move_run);
+registerSaveMmove("m_boss32:makron_move_walk", makron_move_walk);
+registerSaveMmove("m_boss32:makron_move_pain6", makron_move_pain6);
+registerSaveMmove("m_boss32:makron_move_pain5", makron_move_pain5);
+registerSaveMmove("m_boss32:makron_move_pain4", makron_move_pain4);
+registerSaveMmove("m_boss32:makron_move_death2", makron_move_death2);
+registerSaveMmove("m_boss32:makron_move_death3", makron_move_death3);
+registerSaveMmove("m_boss32:makron_move_sight", makron_move_sight);
+registerSaveMmove("m_boss32:makron_move_attack3", makron_move_attack3);
+registerSaveMmove("m_boss32:makron_move_attack4", makron_move_attack4);
+registerSaveMmove("m_boss32:makron_move_attack5", makron_move_attack5);

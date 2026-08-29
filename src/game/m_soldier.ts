@@ -1005,3 +1005,44 @@ export function SP_monster_soldier_ss(self: EdictT): void {
   self.health = 40;
   self.gib_health = -30;
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_soldier:soldier_pain", soldier_pain);
+registerSaveFunction("m_soldier:soldier_die", soldier_die);
+registerSaveFunction("m_soldier:soldier_stand", soldier_stand);
+registerSaveFunction("m_soldier:soldier_walk", soldier_walk);
+registerSaveFunction("m_soldier:soldier_run", soldier_run);
+registerSaveFunction("m_soldier:soldier_dodge", soldier_dodge);
+registerSaveFunction("m_soldier:soldier_attack", soldier_attack);
+registerSaveFunction("m_soldier:soldier_sight", soldier_sight);
+registerSaveMmove("m_soldier:soldier_move_stand1", soldier_move_stand1);
+registerSaveMmove("m_soldier:soldier_move_stand3", soldier_move_stand3);
+registerSaveMmove("m_soldier:soldier_move_walk1", soldier_move_walk1);
+registerSaveMmove("m_soldier:soldier_move_walk2", soldier_move_walk2);
+registerSaveMmove("m_soldier:soldier_move_start_run", soldier_move_start_run);
+registerSaveMmove("m_soldier:soldier_move_run", soldier_move_run);
+registerSaveMmove("m_soldier:soldier_move_pain1", soldier_move_pain1);
+registerSaveMmove("m_soldier:soldier_move_pain2", soldier_move_pain2);
+registerSaveMmove("m_soldier:soldier_move_pain3", soldier_move_pain3);
+registerSaveMmove("m_soldier:soldier_move_pain4", soldier_move_pain4);
+registerSaveMmove("m_soldier:soldier_move_attack1", soldier_move_attack1);
+registerSaveMmove("m_soldier:soldier_move_attack2", soldier_move_attack2);
+registerSaveMmove("m_soldier:soldier_move_attack3", soldier_move_attack3);
+registerSaveMmove("m_soldier:soldier_move_attack4", soldier_move_attack4);
+registerSaveMmove("m_soldier:soldier_move_attack6", soldier_move_attack6);
+registerSaveMmove("m_soldier:soldier_move_duck", soldier_move_duck);
+registerSaveMmove("m_soldier:soldier_move_death1", soldier_move_death1);
+registerSaveMmove("m_soldier:soldier_move_death2", soldier_move_death2);
+registerSaveMmove("m_soldier:soldier_move_death3", soldier_move_death3);
+registerSaveMmove("m_soldier:soldier_move_death4", soldier_move_death4);
+registerSaveMmove("m_soldier:soldier_move_death5", soldier_move_death5);
+registerSaveMmove("m_soldier:soldier_move_death6", soldier_move_death6);

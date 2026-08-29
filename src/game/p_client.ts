@@ -263,6 +263,50 @@ function recoverEdict(u: unknown): EdictT | null {
   return edict === undefined ? null : edict;
 }
 
+// Recovers the full EdictT for the `Edict` every GameExports entry point
+// below receives. Unlike recoverEdict (for pmove/trace results, which cross
+// through qcommon's `unknown`-typed slots and only carry a number), the
+// `Edict` sv_main.ts/sv_user.ts pass into ClientConnect/ClientBegin/
+// ClientUserinfoChanged/ClientDisconnect/ClientThink is never a copy -- it is
+// always the very same EdictT instance already sitting in `g_edicts`
+// (sv_main.ts's SVC_DirectConnect and sv_user.ts's SV_New_f both read it
+// straight out of `ge.edicts`, which is `g_edicts` itself via g_local.ts's
+// globals/exportsObj identity trick). The EDICT_NUM idiom used elsewhere
+// (`g_edicts[ent.s.number]`) is unsound specifically at these entry points:
+// g_spawn.ts's SpawnEntities `.clear()`s every edict on each map load (the
+// `memset(g_edicts, 0, ...)` equivalent), including the reserved player
+// slots, and a player slot's `s.number` is not restored until sv_user.ts's
+// SV_New_f runs -- which happens after ClientConnect, not before. On a fresh
+// boot, ClientConnect for a never-yet-`new`'d slot therefore saw
+// `entIn.s.number === 0` and the numeric lookup silently recovered the world
+// edict instead of the real one, corrupting world.client and crashing
+// ClientUserinfoChanged's `client.pers` dereference. Recovering by reference
+// identity instead sidesteps that staleness window entirely and needs no
+// cast (EdictT structurally satisfies Edict, so `===` narrows cleanly).
+function edictFromBoundary(entIn: Edict): EdictT {
+  const found = g_edicts.find((e) => e === entIn);
+  if (found !== undefined) return found;
+  gi.error("p_client: boundary edict not found in g_edicts");
+}
+
+// `NUM_FOR_EDICT(e)` (g_local.h: `((e)-g_edicts)`) -- every place in
+// p_client.c that needs "which slot is this edict" computes it via pointer
+// arithmetic against g_edicts, never by reading `ent->s.number` (grepping the
+// C source confirms p_client.c never reads ent->s.number at all; every one
+// of gi.WriteShort(ent-g_edicts), `index = ent-g_edicts-1`, `playernum =
+// ent-g_edicts-1`, and `ent->s.skinnum = ent-g_edicts-1` is pointer
+// arithmetic). `ent.s.number` is only kept in sync with an edict's real
+// g_edicts position by linkentity/G_Spawn-style bookkeeping, which has not
+// run yet for a just-connected, not-yet-`new`'d client slot (see
+// edictFromBoundary's comment) -- so any TS call site that substituted
+// `ent.s.number` for this idiom inherited the same staleness bug. g_utils.ts
+// already establishes `g_edicts.indexOf(e)` as this port's NUM_FOR_EDICT
+// equivalent (see its G_InitEdict); this file now uses it everywhere
+// p_client.c uses pointer arithmetic instead of `ent.s.number`.
+function EDICT_NUM(e: EdictT): number {
+  return g_edicts.indexOf(e);
+}
+
 import { Cmd_Help_f } from "./p_hud";
 
 //
@@ -1171,7 +1215,7 @@ function spectator_respawn(ent: EdictT): void {
   if (!client.pers.spectator) {
     // send effect
     gi.WriteByte(svc_muzzleflash);
-    gi.WriteShort(ent.s.number);
+    gi.WriteShort(EDICT_NUM(ent));
     gi.WriteByte(MZ_LOGIN);
     gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
 
@@ -1208,7 +1252,7 @@ export function PutClientInServer(ent: EdictT): void {
   // ranging doesn't count this client
   SelectSpawnPoint(ent, spawn_origin, spawn_angles);
 
-  const index = ent.s.number - 1;
+  const index = EDICT_NUM(ent) - 1;
   if (ent.client === null) return; // defensive; C assumes ent->client is already set
   const client = ent.client;
 
@@ -1294,7 +1338,7 @@ export function PutClientInServer(ent: EdictT): void {
   ent.s.modelindex2 = 255; // custom gun model
   // sknum is player num and weapon number
   // weapon number will be added in changeweapon
-  ent.s.skinnum = ent.s.number - 1;
+  ent.s.skinnum = index;
 
   ent.s.frame = 0;
   VectorCopy(spawn_origin, ent.s.origin);
@@ -1356,7 +1400,7 @@ export function ClientBeginDeathmatch(ent: EdictT): void {
 
   // send effect
   gi.WriteByte(svc_muzzleflash);
-  gi.WriteShort(ent.s.number);
+  gi.WriteShort(EDICT_NUM(ent));
   gi.WriteByte(MZ_LOGIN);
   gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
 
@@ -1377,8 +1421,8 @@ to be placed into the game.  This will happen every level load.
 ============
 */
 export function ClientBegin(entIn: Edict): void {
-  const ent = g_edicts[entIn.s.number];
-  const client = game.clients[ent.s.number - 1];
+  const ent = edictFromBoundary(entIn);
+  const client = game.clients[EDICT_NUM(ent) - 1];
   ent.client = client;
 
   if (cvarNum(gameCvars.deathmatch) !== 0) {
@@ -1412,7 +1456,7 @@ export function ClientBegin(entIn: Edict): void {
     // send effect if in a multiplayer game
     if (game.maxclients > 1) {
       gi.WriteByte(svc_muzzleflash);
-      gi.WriteShort(ent.s.number);
+      gi.WriteShort(EDICT_NUM(ent));
       gi.WriteByte(MZ_LOGIN);
       gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
 
@@ -1435,7 +1479,7 @@ The game can override any of the settings in place
 ============
 */
 export function ClientUserinfoChanged(entIn: Edict, userinfoIn: string): void {
-  const ent = g_edicts[entIn.s.number];
+  const ent = edictFromBoundary(entIn);
   if (ent.client === null) return; // defensive; C assumes ent->client is already set
   const client = ent.client;
 
@@ -1461,7 +1505,7 @@ export function ClientUserinfoChanged(entIn: Edict, userinfoIn: string): void {
   // set skin
   s = Info_ValueForKey(userinfo, "skin");
 
-  const playernum = ent.s.number - 1;
+  const playernum = EDICT_NUM(ent) - 1;
 
   // combine name and skin into a configstring
   gi.configstring(CS_PLAYERSKINS + playernum, `${client.pers.netname}\\${s}`);
@@ -1498,7 +1542,7 @@ loadgames will.
 ============
 */
 export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: boolean; userinfo: string } {
-  const ent = g_edicts[entIn.s.number];
+  const ent = edictFromBoundary(entIn);
   let userinfo = userinfoIn;
 
   // check to see if they are on the banned IP list
@@ -1540,7 +1584,7 @@ export function ClientConnect(entIn: Edict, userinfoIn: string): { allowed: bool
   }
 
   // they can connect
-  const client = game.clients[ent.s.number - 1];
+  const client = game.clients[EDICT_NUM(ent) - 1];
   ent.client = client;
 
   // if there is already a body waiting for us (a loadgame), just
@@ -1570,14 +1614,14 @@ Will not be called between levels.
 ============
 */
 export function ClientDisconnect(entIn: Edict): void {
-  const ent = g_edicts[entIn.s.number];
+  const ent = edictFromBoundary(entIn);
   if (ent.client === null) return;
 
   gi.bprintf(PRINT_HIGH, `${ent.client.pers.netname} disconnected\n`);
 
   // send effect
   gi.WriteByte(svc_muzzleflash);
-  gi.WriteShort(ent.s.number);
+  gi.WriteShort(EDICT_NUM(ent));
   gi.WriteByte(MZ_LOGOUT);
   gi.multicast(ent.s.origin, MulticastT.MULTICAST_PVS);
 
@@ -1588,7 +1632,7 @@ export function ClientDisconnect(entIn: Edict): void {
   ent.classname = "disconnected";
   ent.client.pers.connected = false;
 
-  const playernum = ent.s.number - 1;
+  const playernum = EDICT_NUM(ent) - 1;
   gi.configstring(CS_PLAYERSKINS + playernum, "");
 }
 
@@ -1624,7 +1668,7 @@ usually be a couple times for each server frame.
 ==============
 */
 export function ClientThink(entIn: Edict, ucmd: UsercmdT): void {
-  const ent = g_edicts[entIn.s.number];
+  const ent = edictFromBoundary(entIn);
   if (ent.client === null) return; // defensive; C assumes ent->client is set
   const client = ent.client;
 

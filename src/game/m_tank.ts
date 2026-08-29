@@ -765,3 +765,41 @@ export function SP_monster_tank(self: EdictT): void {
 
   if (self.classname === "monster_tank_commander") self.s.skinnum = 2;
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_tank:tank_pain", tank_pain);
+registerSaveFunction("m_tank:tank_die", tank_die);
+registerSaveFunction("m_tank:tank_stand", tank_stand);
+registerSaveFunction("m_tank:tank_walk", tank_walk);
+registerSaveFunction("m_tank:tank_run", tank_run);
+registerSaveFunction("m_tank:tank_attack", tank_attack);
+registerSaveFunction("m_tank:tank_sight", tank_sight);
+registerSaveFunction("m_tank:tank_idle", tank_idle);
+registerSaveMmove("m_tank:tank_move_start_walk", tank_move_start_walk);
+registerSaveMmove("m_tank:tank_move_walk", tank_move_walk);
+registerSaveMmove("m_tank:tank_move_stop_walk", tank_move_stop_walk);
+registerSaveMmove("m_tank:tank_move_start_run", tank_move_start_run);
+registerSaveMmove("m_tank:tank_move_run", tank_move_run);
+registerSaveMmove("m_tank:tank_move_stop_run", tank_move_stop_run);
+registerSaveMmove("m_tank:tank_move_pain1", tank_move_pain1);
+registerSaveMmove("m_tank:tank_move_pain2", tank_move_pain2);
+registerSaveMmove("m_tank:tank_move_pain3", tank_move_pain3);
+registerSaveMmove("m_tank:tank_move_attack_blast", tank_move_attack_blast);
+registerSaveMmove("m_tank:tank_move_reattack_blast", tank_move_reattack_blast);
+registerSaveMmove("m_tank:tank_move_attack_post_blast", tank_move_attack_post_blast);
+registerSaveMmove("m_tank:tank_move_attack_strike", tank_move_attack_strike);
+registerSaveMmove("m_tank:tank_move_attack_pre_rocket", tank_move_attack_pre_rocket);
+registerSaveMmove("m_tank:tank_move_attack_fire_rocket", tank_move_attack_fire_rocket);
+registerSaveMmove("m_tank:tank_move_attack_post_rocket", tank_move_attack_post_rocket);
+registerSaveMmove("m_tank:tank_move_attack_chain", tank_move_attack_chain);
+registerSaveMmove("m_tank:tank_move_death", tank_move_death);
+registerSaveMmove("m_tank:tank_move_stand", tank_move_stand);

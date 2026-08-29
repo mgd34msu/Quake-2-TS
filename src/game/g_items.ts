@@ -1925,3 +1925,17 @@ export function itemlist(): readonly GItemT[] {
 export function ITEM_INDEX(item: GItemT): number {
   return ITEMLIST.indexOf(item);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("g_items:MegaHealth_think", MegaHealth_think);
+registerSaveFunction("g_items:drop_temp_touch", drop_temp_touch);
+registerSaveFunction("g_items:drop_make_touchable", drop_make_touchable);

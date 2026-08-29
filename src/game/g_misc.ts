@@ -1633,3 +1633,54 @@ export function SP_misc_teleporter_dest(ent: EdictT): void {
   VectorSet(ent.maxs, 32, 32, -16);
   gi.linkentity(ent);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("g_misc:Use_Areaportal", Use_Areaportal);
+registerSaveFunction("g_misc:gib_think", gib_think);
+registerSaveFunction("g_misc:gib_die", gib_die);
+registerSaveFunction("g_misc:gib_touch", gib_touch);
+registerSaveFunction("g_misc:debris_die", debris_die);
+registerSaveFunction("g_misc:path_corner_touch", path_corner_touch);
+registerSaveFunction("g_misc:point_combat_touch", point_combat_touch);
+registerSaveFunction("g_misc:TH_viewthing", TH_viewthing);
+registerSaveFunction("g_misc:light_use", light_use);
+registerSaveFunction("g_misc:func_wall_use", func_wall_use);
+registerSaveFunction("g_misc:func_object_touch", func_object_touch);
+registerSaveFunction("g_misc:func_object_release", func_object_release);
+registerSaveFunction("g_misc:func_object_use", func_object_use);
+registerSaveFunction("g_misc:func_explosive_spawn", func_explosive_spawn);
+registerSaveFunction("g_misc:func_explosive_use", func_explosive_use);
+registerSaveFunction("g_misc:func_explosive_explode", func_explosive_explode);
+registerSaveFunction("g_misc:barrel_explode", barrel_explode);
+registerSaveFunction("g_misc:barrel_delay", barrel_delay);
+registerSaveFunction("g_misc:barrel_touch", barrel_touch);
+registerSaveFunction("g_misc:misc_blackhole_use", misc_blackhole_use);
+registerSaveFunction("g_misc:misc_blackhole_think", misc_blackhole_think);
+registerSaveFunction("g_misc:misc_eastertank_think", misc_eastertank_think);
+registerSaveFunction("g_misc:misc_easterchick_think", misc_easterchick_think);
+registerSaveFunction("g_misc:misc_easterchick2_think", misc_easterchick2_think);
+registerSaveFunction("g_misc:commander_body_think", commander_body_think);
+registerSaveFunction("g_misc:commander_body_use", commander_body_use);
+registerSaveFunction("g_misc:commander_body_drop", commander_body_drop);
+registerSaveFunction("g_misc:misc_banner_think", misc_banner_think);
+registerSaveFunction("g_misc:misc_deadsoldier_die", misc_deadsoldier_die);
+registerSaveFunction("g_misc:misc_viper_use", misc_viper_use);
+registerSaveFunction("g_misc:misc_viper_bomb_prethink", misc_viper_bomb_prethink);
+registerSaveFunction("g_misc:misc_viper_bomb_touch", misc_viper_bomb_touch);
+registerSaveFunction("g_misc:misc_viper_bomb_use", misc_viper_bomb_use);
+registerSaveFunction("g_misc:misc_strogg_ship_use", misc_strogg_ship_use);
+registerSaveFunction("g_misc:misc_satellite_dish_think", misc_satellite_dish_think);
+registerSaveFunction("g_misc:misc_satellite_dish_use", misc_satellite_dish_use);
+registerSaveFunction("g_misc:target_string_use", target_string_use);
+registerSaveFunction("g_misc:func_clock_think", func_clock_think);
+registerSaveFunction("g_misc:func_clock_use", func_clock_use);
+registerSaveFunction("g_misc:teleporter_touch", teleporter_touch);

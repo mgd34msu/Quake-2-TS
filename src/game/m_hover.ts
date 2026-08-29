@@ -403,3 +403,39 @@ export function SP_monster_hover(self: EdictT): void {
 
   flymonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_hover:hover_deadthink", hover_deadthink);
+registerSaveFunction("m_hover:hover_pain", hover_pain);
+registerSaveFunction("m_hover:hover_die", hover_die);
+registerSaveFunction("m_hover:hover_stand", hover_stand);
+registerSaveFunction("m_hover:hover_walk", hover_walk);
+registerSaveFunction("m_hover:hover_run", hover_run);
+registerSaveFunction("m_hover:hover_start_attack", hover_start_attack);
+registerSaveFunction("m_hover:hover_sight", hover_sight);
+registerSaveFunction("m_hover:hover_search", hover_search);
+registerSaveMmove("m_hover:hover_move_stand", hover_move_stand);
+registerSaveMmove("m_hover:hover_move_stop1", hover_move_stop1);
+registerSaveMmove("m_hover:hover_move_stop2", hover_move_stop2);
+registerSaveMmove("m_hover:hover_move_takeoff", hover_move_takeoff);
+registerSaveMmove("m_hover:hover_move_pain3", hover_move_pain3);
+registerSaveMmove("m_hover:hover_move_pain2", hover_move_pain2);
+registerSaveMmove("m_hover:hover_move_pain1", hover_move_pain1);
+registerSaveMmove("m_hover:hover_move_land", hover_move_land);
+registerSaveMmove("m_hover:hover_move_forward", hover_move_forward);
+registerSaveMmove("m_hover:hover_move_walk", hover_move_walk);
+registerSaveMmove("m_hover:hover_move_run", hover_move_run);
+registerSaveMmove("m_hover:hover_move_death1", hover_move_death1);
+registerSaveMmove("m_hover:hover_move_backward", hover_move_backward);
+registerSaveMmove("m_hover:hover_move_start_attack", hover_move_start_attack);
+registerSaveMmove("m_hover:hover_move_attack1", hover_move_attack1);
+registerSaveMmove("m_hover:hover_move_end_attack", hover_move_end_attack);

@@ -570,3 +570,38 @@ export function SP_monster_mutant(self: EdictT): void {
   self.monsterinfo.scale = F.MODEL_SCALE;
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_mutant:mutant_jump_touch", mutant_jump_touch);
+registerSaveFunction("m_mutant:mutant_pain", mutant_pain);
+registerSaveFunction("m_mutant:mutant_die", mutant_die);
+registerSaveFunction("m_mutant:mutant_stand", mutant_stand);
+registerSaveFunction("m_mutant:mutant_walk", mutant_walk);
+registerSaveFunction("m_mutant:mutant_run", mutant_run);
+registerSaveFunction("m_mutant:mutant_jump", mutant_jump);
+registerSaveFunction("m_mutant:mutant_melee", mutant_melee);
+registerSaveFunction("m_mutant:mutant_sight", mutant_sight);
+registerSaveFunction("m_mutant:mutant_search", mutant_search);
+registerSaveFunction("m_mutant:mutant_idle", mutant_idle);
+registerSaveFunction("m_mutant:mutant_checkattack", mutant_checkattack);
+registerSaveMmove("m_mutant:mutant_move_stand", mutant_move_stand);
+registerSaveMmove("m_mutant:mutant_move_idle", mutant_move_idle);
+registerSaveMmove("m_mutant:mutant_move_walk", mutant_move_walk);
+registerSaveMmove("m_mutant:mutant_move_start_walk", mutant_move_start_walk);
+registerSaveMmove("m_mutant:mutant_move_run", mutant_move_run);
+registerSaveMmove("m_mutant:mutant_move_attack", mutant_move_attack);
+registerSaveMmove("m_mutant:mutant_move_jump", mutant_move_jump);
+registerSaveMmove("m_mutant:mutant_move_pain1", mutant_move_pain1);
+registerSaveMmove("m_mutant:mutant_move_pain2", mutant_move_pain2);
+registerSaveMmove("m_mutant:mutant_move_pain3", mutant_move_pain3);
+registerSaveMmove("m_mutant:mutant_move_death1", mutant_move_death1);
+registerSaveMmove("m_mutant:mutant_move_death2", mutant_move_death2);

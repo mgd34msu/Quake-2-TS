@@ -720,3 +720,35 @@ export function SP_monster_medic(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_medic:medic_pain", medic_pain);
+registerSaveFunction("m_medic:medic_die", medic_die);
+registerSaveFunction("m_medic:medic_stand", medic_stand);
+registerSaveFunction("m_medic:medic_walk", medic_walk);
+registerSaveFunction("m_medic:medic_run", medic_run);
+registerSaveFunction("m_medic:medic_dodge", medic_dodge);
+registerSaveFunction("m_medic:medic_attack", medic_attack);
+registerSaveFunction("m_medic:medic_sight", medic_sight);
+registerSaveFunction("m_medic:medic_idle", medic_idle);
+registerSaveFunction("m_medic:medic_search", medic_search);
+registerSaveFunction("m_medic:medic_checkattack", medic_checkattack);
+registerSaveMmove("m_medic:medic_move_stand", medic_move_stand);
+registerSaveMmove("m_medic:medic_move_walk", medic_move_walk);
+registerSaveMmove("m_medic:medic_move_run", medic_move_run);
+registerSaveMmove("m_medic:medic_move_pain1", medic_move_pain1);
+registerSaveMmove("m_medic:medic_move_pain2", medic_move_pain2);
+registerSaveMmove("m_medic:medic_move_death", medic_move_death);
+registerSaveMmove("m_medic:medic_move_duck", medic_move_duck);
+registerSaveMmove("m_medic:medic_move_attackHyperBlaster", medic_move_attackHyperBlaster);
+registerSaveMmove("m_medic:medic_move_attackBlaster", medic_move_attackBlaster);
+registerSaveMmove("m_medic:medic_move_attackCable", medic_move_attackCable);

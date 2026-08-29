@@ -271,6 +271,14 @@ export function Cvar_List_f(): void {
 // so that the client knows to send it to the server
 export let userinfo_modified = false;
 
+// C clears this with a raw `userinfo_modified = false;` extern assignment
+// at its two call sites (cl_main.c's CL_SendConnectPacket, cl_input.c's
+// CL_SendCmd); `export let` bindings are read-only to importers, so those
+// client-side call sites need a setter to do the same.
+export function SetUserinfoModified(v: boolean): void {
+  userinfo_modified = v;
+}
+
 export function Cvar_BitInfo(bit: number): string {
   let info = "";
   for (const v of cvar_vars.values()) {

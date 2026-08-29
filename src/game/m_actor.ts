@@ -448,3 +448,33 @@ export function SP_target_actor(self: EdictT): void {
 
   gi.linkentity(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_actor:actor_pain", actor_pain);
+registerSaveFunction("m_actor:actor_die", actor_die);
+registerSaveFunction("m_actor:actor_use", actor_use);
+registerSaveFunction("m_actor:target_actor_touch", target_actor_touch);
+registerSaveFunction("m_actor:actor_stand", actor_stand);
+registerSaveFunction("m_actor:actor_walk", actor_walk);
+registerSaveFunction("m_actor:actor_run", actor_run);
+registerSaveFunction("m_actor:actor_attack", actor_attack);
+registerSaveMmove("m_actor:actor_move_stand", actor_move_stand);
+registerSaveMmove("m_actor:actor_move_walk", actor_move_walk);
+registerSaveMmove("m_actor:actor_move_run", actor_move_run);
+registerSaveMmove("m_actor:actor_move_pain1", actor_move_pain1);
+registerSaveMmove("m_actor:actor_move_pain2", actor_move_pain2);
+registerSaveMmove("m_actor:actor_move_pain3", actor_move_pain3);
+registerSaveMmove("m_actor:actor_move_flipoff", actor_move_flipoff);
+registerSaveMmove("m_actor:actor_move_taunt", actor_move_taunt);
+registerSaveMmove("m_actor:actor_move_death1", actor_move_death1);
+registerSaveMmove("m_actor:actor_move_death2", actor_move_death2);
+registerSaveMmove("m_actor:actor_move_attack", actor_move_attack);

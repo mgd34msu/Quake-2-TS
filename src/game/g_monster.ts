@@ -706,3 +706,17 @@ export function swimmonster_start(self: EdictT): void {
   monster_start(self);
 }
 
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("g_monster:M_FliesOff", M_FliesOff);
+registerSaveFunction("g_monster:M_FliesOn", M_FliesOn);
+registerSaveFunction("g_monster:M_CheckAttack", M_CheckAttack);

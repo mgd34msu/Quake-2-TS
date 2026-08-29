@@ -5,7 +5,7 @@ import { SV_Multicast } from "../src/server/sv_send";
 import { geHolder } from "../src/server/sv_game";
 import { NetadrT, NetadrtypeT, NetsrcT } from "../src/qcommon/qcommon";
 import { net_from, net_message } from "../src/qcommon/net_chan";
-import { NET_SendPacket, NET_GetPacket } from "../src/platform/net_udp";
+import { NET_ClearLoopback, NET_SendPacket, NET_GetPacket } from "../src/platform/net_udp";
 import { SZ_Init, MSG_BeginReading, MSG_ReadLong } from "../src/qcommon/sizebuf";
 import { Cvar_FullSet, Cvar_VariableString } from "../src/qcommon/cvar";
 import { CVAR_LATCH, CVAR_SERVERINFO } from "../src/shared/q_shared";
@@ -154,6 +154,7 @@ describe("SV_StatusString", () => {
 
 describe("SVC_GetChallenge", () => {
   test("issues a challenge and replies over the NS_SERVER loopback path", () => {
+    NET_ClearLoopback(); // rule 13: earlier suites may have used the rings
     const adr = loopbackAdr();
     const text = "getchallenge";
     const bytes = new Uint8Array(4 + text.length);

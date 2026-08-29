@@ -425,3 +425,33 @@ export function SP_monster_berserk(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_berserk:berserk_pain", berserk_pain);
+registerSaveFunction("m_berserk:berserk_die", berserk_die);
+registerSaveFunction("m_berserk:berserk_stand", berserk_stand);
+registerSaveFunction("m_berserk:berserk_walk", berserk_walk);
+registerSaveFunction("m_berserk:berserk_run", berserk_run);
+registerSaveFunction("m_berserk:berserk_melee", berserk_melee);
+registerSaveFunction("m_berserk:berserk_sight", berserk_sight);
+registerSaveFunction("m_berserk:berserk_search", berserk_search);
+registerSaveMmove("m_berserk:berserk_move_stand", berserk_move_stand);
+registerSaveMmove("m_berserk:berserk_move_stand_fidget", berserk_move_stand_fidget);
+registerSaveMmove("m_berserk:berserk_move_walk", berserk_move_walk);
+registerSaveMmove("m_berserk:berserk_move_run1", berserk_move_run1);
+registerSaveMmove("m_berserk:berserk_move_attack_spike", berserk_move_attack_spike);
+registerSaveMmove("m_berserk:berserk_move_attack_club", berserk_move_attack_club);
+registerSaveMmove("m_berserk:berserk_move_attack_strike", berserk_move_attack_strike);
+registerSaveMmove("m_berserk:berserk_move_pain1", berserk_move_pain1);
+registerSaveMmove("m_berserk:berserk_move_pain2", berserk_move_pain2);
+registerSaveMmove("m_berserk:berserk_move_death1", berserk_move_death1);
+registerSaveMmove("m_berserk:berserk_move_death2", berserk_move_death2);

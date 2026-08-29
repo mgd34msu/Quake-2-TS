@@ -280,3 +280,30 @@ export function SP_monster_flipper(self: EdictT): void {
 
   swimmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_flipper:flipper_pain", flipper_pain);
+registerSaveFunction("m_flipper:flipper_die", flipper_die);
+registerSaveFunction("m_flipper:flipper_stand", flipper_stand);
+registerSaveFunction("m_flipper:flipper_walk", flipper_walk);
+registerSaveFunction("m_flipper:flipper_start_run", flipper_start_run);
+registerSaveFunction("m_flipper:flipper_melee", flipper_melee);
+registerSaveFunction("m_flipper:flipper_sight", flipper_sight);
+registerSaveMmove("m_flipper:flipper_move_stand", flipper_move_stand);
+registerSaveMmove("m_flipper:flipper_move_run_loop", flipper_move_run_loop);
+registerSaveMmove("m_flipper:flipper_move_run_start", flipper_move_run_start);
+registerSaveMmove("m_flipper:flipper_move_walk", flipper_move_walk);
+registerSaveMmove("m_flipper:flipper_move_start_run", flipper_move_start_run);
+registerSaveMmove("m_flipper:flipper_move_pain2", flipper_move_pain2);
+registerSaveMmove("m_flipper:flipper_move_pain1", flipper_move_pain1);
+registerSaveMmove("m_flipper:flipper_move_attack", flipper_move_attack);
+registerSaveMmove("m_flipper:flipper_move_death", flipper_move_death);

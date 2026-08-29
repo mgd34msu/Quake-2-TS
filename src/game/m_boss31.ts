@@ -615,3 +615,35 @@ export function SP_monster_jorg(self: EdictT): void {
 // jorg_death_hit is likewise defined but never referenced by any frame
 // table in the original. Dead code in the original, preserved faithfully
 // rather than pruned.
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_boss31:jorg_pain", jorg_pain);
+registerSaveFunction("m_boss31:jorg_die", jorg_die);
+registerSaveFunction("m_boss31:jorg_stand", jorg_stand);
+registerSaveFunction("m_boss31:jorg_walk", jorg_walk);
+registerSaveFunction("m_boss31:jorg_run", jorg_run);
+registerSaveFunction("m_boss31:jorg_attack", jorg_attack);
+registerSaveFunction("m_boss31:jorg_search", jorg_search);
+registerSaveFunction("m_boss31:Jorg_CheckAttack", Jorg_CheckAttack);
+registerSaveMmove("m_boss31:jorg_move_stand", jorg_move_stand);
+registerSaveMmove("m_boss31:jorg_move_run", jorg_move_run);
+registerSaveMmove("m_boss31:jorg_move_start_walk", jorg_move_start_walk);
+registerSaveMmove("m_boss31:jorg_move_walk", jorg_move_walk);
+registerSaveMmove("m_boss31:jorg_move_end_walk", jorg_move_end_walk);
+registerSaveMmove("m_boss31:jorg_move_pain3", jorg_move_pain3);
+registerSaveMmove("m_boss31:jorg_move_pain2", jorg_move_pain2);
+registerSaveMmove("m_boss31:jorg_move_pain1", jorg_move_pain1);
+registerSaveMmove("m_boss31:jorg_move_death", jorg_move_death);
+registerSaveMmove("m_boss31:jorg_move_attack2", jorg_move_attack2);
+registerSaveMmove("m_boss31:jorg_move_start_attack1", jorg_move_start_attack1);
+registerSaveMmove("m_boss31:jorg_move_attack1", jorg_move_attack1);
+registerSaveMmove("m_boss31:jorg_move_end_attack1", jorg_move_end_attack1);

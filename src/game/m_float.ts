@@ -400,3 +400,35 @@ export function SP_monster_floater(self: EdictT): void {
 
   flymonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_float:floater_pain", floater_pain);
+registerSaveFunction("m_float:floater_die", floater_die);
+registerSaveFunction("m_float:floater_stand", floater_stand);
+registerSaveFunction("m_float:floater_walk", floater_walk);
+registerSaveFunction("m_float:floater_run", floater_run);
+registerSaveFunction("m_float:floater_attack", floater_attack);
+registerSaveFunction("m_float:floater_melee", floater_melee);
+registerSaveFunction("m_float:floater_sight", floater_sight);
+registerSaveFunction("m_float:floater_idle", floater_idle);
+registerSaveMmove("m_float:floater_move_stand1", floater_move_stand1);
+registerSaveMmove("m_float:floater_move_stand2", floater_move_stand2);
+registerSaveMmove("m_float:floater_move_activate", floater_move_activate);
+registerSaveMmove("m_float:floater_move_attack1", floater_move_attack1);
+registerSaveMmove("m_float:floater_move_attack2", floater_move_attack2);
+registerSaveMmove("m_float:floater_move_attack3", floater_move_attack3);
+registerSaveMmove("m_float:floater_move_death", floater_move_death);
+registerSaveMmove("m_float:floater_move_pain1", floater_move_pain1);
+registerSaveMmove("m_float:floater_move_pain2", floater_move_pain2);
+registerSaveMmove("m_float:floater_move_pain3", floater_move_pain3);
+registerSaveMmove("m_float:floater_move_walk", floater_move_walk);
+registerSaveMmove("m_float:floater_move_run", floater_move_run);

@@ -603,3 +603,37 @@ export function SP_monster_gunner(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_gunner:gunner_pain", gunner_pain);
+registerSaveFunction("m_gunner:gunner_die", gunner_die);
+registerSaveFunction("m_gunner:gunner_stand", gunner_stand);
+registerSaveFunction("m_gunner:gunner_walk", gunner_walk);
+registerSaveFunction("m_gunner:gunner_run", gunner_run);
+registerSaveFunction("m_gunner:gunner_dodge", gunner_dodge);
+registerSaveFunction("m_gunner:gunner_attack", gunner_attack);
+registerSaveFunction("m_gunner:gunner_sight", gunner_sight);
+registerSaveFunction("m_gunner:gunner_search", gunner_search);
+registerSaveMmove("m_gunner:gunner_move_fidget", gunner_move_fidget);
+registerSaveMmove("m_gunner:gunner_move_stand", gunner_move_stand);
+registerSaveMmove("m_gunner:gunner_move_walk", gunner_move_walk);
+registerSaveMmove("m_gunner:gunner_move_run", gunner_move_run);
+registerSaveMmove("m_gunner:gunner_move_runandshoot", gunner_move_runandshoot);
+registerSaveMmove("m_gunner:gunner_move_pain3", gunner_move_pain3);
+registerSaveMmove("m_gunner:gunner_move_pain2", gunner_move_pain2);
+registerSaveMmove("m_gunner:gunner_move_pain1", gunner_move_pain1);
+registerSaveMmove("m_gunner:gunner_move_death", gunner_move_death);
+registerSaveMmove("m_gunner:gunner_move_duck", gunner_move_duck);
+registerSaveMmove("m_gunner:gunner_move_attack_chain", gunner_move_attack_chain);
+registerSaveMmove("m_gunner:gunner_move_fire_chain", gunner_move_fire_chain);
+registerSaveMmove("m_gunner:gunner_move_endfire_chain", gunner_move_endfire_chain);
+registerSaveMmove("m_gunner:gunner_move_attack_grenade", gunner_move_attack_grenade);

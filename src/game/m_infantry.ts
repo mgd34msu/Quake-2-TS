@@ -579,3 +579,35 @@ export function SP_monster_infantry(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_infantry:infantry_pain", infantry_pain);
+registerSaveFunction("m_infantry:infantry_die", infantry_die);
+registerSaveFunction("m_infantry:infantry_stand", infantry_stand);
+registerSaveFunction("m_infantry:infantry_walk", infantry_walk);
+registerSaveFunction("m_infantry:infantry_run", infantry_run);
+registerSaveFunction("m_infantry:infantry_dodge", infantry_dodge);
+registerSaveFunction("m_infantry:infantry_attack", infantry_attack);
+registerSaveFunction("m_infantry:infantry_sight", infantry_sight);
+registerSaveFunction("m_infantry:infantry_fidget", infantry_fidget);
+registerSaveMmove("m_infantry:infantry_move_stand", infantry_move_stand);
+registerSaveMmove("m_infantry:infantry_move_fidget", infantry_move_fidget);
+registerSaveMmove("m_infantry:infantry_move_walk", infantry_move_walk);
+registerSaveMmove("m_infantry:infantry_move_run", infantry_move_run);
+registerSaveMmove("m_infantry:infantry_move_pain1", infantry_move_pain1);
+registerSaveMmove("m_infantry:infantry_move_pain2", infantry_move_pain2);
+registerSaveMmove("m_infantry:infantry_move_death1", infantry_move_death1);
+registerSaveMmove("m_infantry:infantry_move_death2", infantry_move_death2);
+registerSaveMmove("m_infantry:infantry_move_death3", infantry_move_death3);
+registerSaveMmove("m_infantry:infantry_move_duck", infantry_move_duck);
+registerSaveMmove("m_infantry:infantry_move_attack1", infantry_move_attack1);
+registerSaveMmove("m_infantry:infantry_move_attack2", infantry_move_attack2);

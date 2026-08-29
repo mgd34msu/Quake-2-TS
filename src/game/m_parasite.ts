@@ -556,3 +556,36 @@ export function SP_monster_parasite(self: EdictT): void {
 
   walkmonster_start(self);
 }
+
+// -------------------------------------------------------------------------
+// Savegame function/mmove registry -- so a save containing an entity that
+// references one of these callbacks or move tables restores a real
+// think/touch/use/pain/die/blocked function or monsterinfo.currentmove
+// object instead of null (see g_save.ts's registerSaveFunction/
+// registerSaveMmove name registry).
+// -------------------------------------------------------------------------
+
+import { registerSaveFunction, registerSaveMmove } from "./g_save";
+
+registerSaveFunction("m_parasite:parasite_pain", parasite_pain);
+registerSaveFunction("m_parasite:parasite_die", parasite_die);
+registerSaveFunction("m_parasite:parasite_stand", parasite_stand);
+registerSaveFunction("m_parasite:parasite_start_walk", parasite_start_walk);
+registerSaveFunction("m_parasite:parasite_start_run", parasite_start_run);
+registerSaveFunction("m_parasite:parasite_attack", parasite_attack);
+registerSaveFunction("m_parasite:parasite_sight", parasite_sight);
+registerSaveFunction("m_parasite:parasite_idle", parasite_idle);
+registerSaveMmove("m_parasite:parasite_move_start_fidget", parasite_move_start_fidget);
+registerSaveMmove("m_parasite:parasite_move_fidget", parasite_move_fidget);
+registerSaveMmove("m_parasite:parasite_move_end_fidget", parasite_move_end_fidget);
+registerSaveMmove("m_parasite:parasite_move_stand", parasite_move_stand);
+registerSaveMmove("m_parasite:parasite_move_run", parasite_move_run);
+registerSaveMmove("m_parasite:parasite_move_start_run", parasite_move_start_run);
+registerSaveMmove("m_parasite:parasite_move_stop_run", parasite_move_stop_run);
+registerSaveMmove("m_parasite:parasite_move_walk", parasite_move_walk);
+registerSaveMmove("m_parasite:parasite_move_start_walk", parasite_move_start_walk);
+registerSaveMmove("m_parasite:parasite_move_stop_walk", parasite_move_stop_walk);
+registerSaveMmove("m_parasite:parasite_move_pain1", parasite_move_pain1);
+registerSaveMmove("m_parasite:parasite_move_drain", parasite_move_drain);
+registerSaveMmove("m_parasite:parasite_move_break", parasite_move_break);
+registerSaveMmove("m_parasite:parasite_move_death", parasite_move_death);

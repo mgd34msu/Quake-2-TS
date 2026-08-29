@@ -142,38 +142,66 @@ export const FIELDS: FieldSpawn[] = [
 // Function / mmove name registry (F_FUNCTION / F_MMOVE replacement).
 // -------------------------------------------------------------------------
 
-const functionRegistry = new Map<string, Function>();
-const functionNameByRef = new Map<Function, string>();
+// `var` (not `const`) deliberately: every m_*.ts monster module and
+// g_monster.ts/g_func.ts/g_items.ts/g_misc.ts import registerSaveFunction/
+// registerSaveMmove from this file and call them at their own top level.
+// Because this file already imports FROM those same four g_*.ts modules
+// below (for its own registry population), that reverse import creates a
+// genuine ES module cycle: when evaluating one of them pulls this module
+// back in before this module's own top-level code has run, a `const` here
+// would still be in its temporal dead zone and throw
+// "Cannot access before initialization". `var` is hoisted with an
+// `undefined` value before any module code runs (including that cyclic
+// re-entry), so the lazy accessors below always see a real Map, however
+// early they're called.
+var functionRegistryStore: Map<string, Function> | undefined;
+function getFunctionRegistry(): Map<string, Function> {
+  if (functionRegistryStore === undefined) functionRegistryStore = new Map();
+  return functionRegistryStore;
+}
+var functionNameByRefStore: Map<Function, string> | undefined;
+function getFunctionNameByRef(): Map<Function, string> {
+  if (functionNameByRefStore === undefined) functionNameByRefStore = new Map();
+  return functionNameByRefStore;
+}
 
 export function registerSaveFunction(name: string, fn: Function): void {
-  functionRegistry.set(name, fn);
-  functionNameByRef.set(fn, name);
+  getFunctionRegistry().set(name, fn);
+  getFunctionNameByRef().set(fn, name);
 }
 
 function lookupSaveFunctionRaw(name: string): Function | null {
-  return functionRegistry.get(name) ?? null;
+  return getFunctionRegistry().get(name) ?? null;
 }
 
 function nameOfFunction(fn: Function | null): string | null {
   if (fn === null) return null;
-  return functionNameByRef.get(fn) ?? null;
+  return getFunctionNameByRef().get(fn) ?? null;
 }
 
-const mmoveRegistry = new Map<string, MmoveT>();
-const mmoveNameByRef = new Map<MmoveT, string>();
+var mmoveRegistryStore: Map<string, MmoveT> | undefined;
+function getMmoveRegistry(): Map<string, MmoveT> {
+  if (mmoveRegistryStore === undefined) mmoveRegistryStore = new Map();
+  return mmoveRegistryStore;
+}
+var mmoveNameByRefStore: Map<MmoveT, string> | undefined;
+function getMmoveNameByRef(): Map<MmoveT, string> {
+  if (mmoveNameByRefStore === undefined) mmoveNameByRefStore = new Map();
+  return mmoveNameByRefStore;
+}
 
 export function registerSaveMmove(name: string, mmove: MmoveT): void {
-  mmoveRegistry.set(name, mmove);
-  mmoveNameByRef.set(mmove, name);
+  getMmoveRegistry().set(name, mmove);
+  getMmoveNameByRef().set(mmove, name);
 }
 
 function lookupSaveMmove(name: string): MmoveT | null {
-  return mmoveRegistry.get(name) ?? null;
+  return getMmoveRegistry().get(name) ?? null;
 }
 
 function nameOfMmove(mmove: MmoveT | null): string | null {
   if (mmove === null) return null;
-  return mmoveNameByRef.get(mmove) ?? null;
+  return getMmoveNameByRef().get(mmove) ?? null;
 }
 
 // Adapters: a registered function is stored/looked-up as the TS top type
