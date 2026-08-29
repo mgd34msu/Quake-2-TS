@@ -32,7 +32,7 @@ import {
   sw_state,
   vid,
 } from "../src/ref_soft/r_local";
-import { ImageT, ImagetypeT, MedgeT, MleafT, ModelT, ModtypeT, MnodeT, MsurfaceT, MtexinfoT, MvertexT, isMleaf, CONTENTS_NODE, Mod_Init } from "../src/ref_soft/r_model";
+import { ImageT, ImagetypeT, MedgeT, MleafT, ModelT, ModtypeT, MnodeT, MsurfaceT, MtexinfoT, MvertexT, isMleaf, CONTENTS_NODE, Mod_ClearAll } from "../src/ref_soft/r_model";
 import { SWimp_SetMode, SWimp_Shutdown } from "../src/platform/swimp";
 import type { RefImports } from "../src/client/ref";
 import type { CvarT } from "../src/shared/q_shared";
@@ -206,13 +206,13 @@ describe("platform/swimp.ts (headless video)", () => {
 
 describe("PendingPort stubs", () => {
   test("a ref_soft stub throws PendingPort with its C function name", () => {
-    expect(() => Mod_Init()).toThrow(PendingPort);
+    expect(() => Mod_ClearAll()).toThrow(PendingPort);
     try {
-      Mod_Init();
-      throw new Error("expected Mod_Init to throw");
+      Mod_ClearAll();
+      throw new Error("expected Mod_ClearAll to throw");
     } catch (err) {
       expect(err).toBeInstanceOf(PendingPort);
-      expect((err as Error).message).toContain("Mod_Init");
+      expect((err as Error).message).toContain("Mod_ClearAll");
     }
   });
 });

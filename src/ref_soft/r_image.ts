@@ -21,18 +21,8 @@ r_image.c's own module-static `image_t r_images[MAX_RIMAGES]` / `numr_images`
 are declared at this module's top level, matching "the module that owns
 them in C" (PORTING.md).
 
-Deviation: r_image.c reads and writes the file-scope global `registration_
-sequence`, which r_model.c actually owns (`int registration_sequence;`) and
-which r_model.ts already exports as a bare `export let registration_
-sequence = 0;` with no setter. ES module bindings are live but read-only
-from an importing module -- `R_InitImages`'s `registration_sequence = 1;`
-cannot be written through that import, and this unit's SCOPE does not cover
-editing r_model.ts to add a setter. Declared a private module-scope copy of
-the same name here instead. r_model.ts's copy is only touched today by its
-own PendingPort stubs (Mod_ForName et al. all throw immediately), so the
-two counters cannot yet observably diverge; flagged for the coordinator to
-reconcile (ideally r_model.ts grows a small setter and both modules share
-one counter, the way g_edicts/gi use SetGEdicts/SetGameImports).
+registration_sequence is owned by r_model.ts (as in C); imported as a
+live binding, written via its SetRegistrationSequence setter.
 
 `R_ImageList_f` (the `imagelist` console command) is not declared in
 r_local.h, is not referenced by any other ported module, and is not named
@@ -41,11 +31,11 @@ in this unit's brief -- not ported.
 
 import { Com_PageInMemory, ERR_DROP, MAX_QPATH, PRINT_ALL, PRINT_DEVELOPER } from "../shared/q_shared";
 import { ri, r_notexture_mip } from "./r_local";
-import { ImageT, ImagetypeT } from "./r_model";
+import { ImageT, ImagetypeT, registration_sequence, SetRegistrationSequence } from "./r_model";
 
 // r_image.c owns this counter; r_model.c's copy of the same name cannot be
 // written through r_model.ts's export (see file header deviation note).
-let registration_sequence = 0;
+
 
 const MAX_RIMAGES = 1024;
 const r_images: ImageT[] = [];
@@ -273,14 +263,7 @@ function clearImage(image: ImageT): void {
   image.pixels = [null, null, null, null];
 }
 
-/*
-================
-R_FreeUnusedImages
 
-Any image that was not touched on this registration sequence
-will be freed.
-================
-*/
 export function R_FreeUnusedImages(): void {
   for (let i = 0; i < numr_images; i++) {
     const image = r_images[i];
@@ -302,7 +285,7 @@ R_InitImages
 ===============
 */
 export function R_InitImages(): void {
-  registration_sequence = 1;
+  SetRegistrationSequence(1);
 }
 
 /*
