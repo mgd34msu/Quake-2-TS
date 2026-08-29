@@ -44,6 +44,7 @@ Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configur
 - C globals that are reassigned pointers (`g_edicts`, `currentmove`) become fields on their owning singleton or a small exported holder object.
 - The game/engine boundary keeps the DLL shape: `game_import_t` → `interface GameImports`, `game_export_t` → `interface GameExports` in `src/game/game.ts`. The server constructs a `GameImports` object and calls `GetGameAPI(gi)`; nothing else crosses that boundary.
 - Header modules (`g_local.ts`, `server.ts`, `client.ts`, `qcommon.ts`) hold shared types, constants, and singletons. Use `import type` for type-only imports. If two modules need each other's values at load time, move the shared value into the header module instead of importing sideways.
+- Import-cycle rule: when a static import closes a value cycle that breaks module init (TDZ `ReferenceError` at load), the module on the *less fundamental* side breaks the cycle by dropping the static import and resolving lazily inside the function bodies with Bun's synchronous `require()` (keep `import type` for the types). This is the one sanctioned use of `require()`; report each use. First instance: `files.ts` → `cvar`/`cmd`.
 
 ## Idiom map
 
