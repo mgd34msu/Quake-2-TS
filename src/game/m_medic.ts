@@ -1,0 +1,7 @@
+// m_medic.c -- pending port
+import { PendingPort } from "../qcommon/pending";
+import type { EdictT } from "./g_local";
+
+export function SP_monster_medic(self: EdictT): void {
+  throw new PendingPort("m_medic.c:SP_monster_medic");
+}

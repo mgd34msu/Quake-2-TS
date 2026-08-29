@@ -60,6 +60,11 @@ Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configur
 - UDP networking: `Bun.udpSocket` inside `src/platform/net_udp.ts`, presenting the `NET_*`/`netadr_t` interface from `qcommon.h`.
 - No `console.log` outside `src/platform/sys.ts` (Sys_ConsoleOutput is the one print boundary).
 
+## Game-track conventions (settled after G1)
+
+- `gi`, `globals`, `g_edicts` are bare `export let` globals in `g_local.ts`, assigned via `SetGameImports`/`SetGameExports`/`SetGEdicts` from `GetGameAPI`/`InitGame`. Call sites keep the C shape (`gi.dprintf(...)`, `g_edicts[i]`). No holders, no null-checks; undefined-before-load matches the C global's lifetime.
+- C field-offset macros die at the call site: `FOFS(targetname)` → the literal property name `"targetname"`. `G_Find(from, field, match)` takes `field` typed as the string-valued keys of `EdictT` (`type EdictStringKey = { [K in keyof EdictT]: EdictT[K] extends string | null ? K : never }[keyof EdictT]`). `g_save.c`'s `fields[]` table gets the same property-name redesign.
+
 ## Type discipline (enforced)
 
 `tsc --strict` with zero `any` (grep-gated, including `as any`, `<any>`, `any[]`). No `as` casts except `as const`; parse external bytes/strings into typed shapes at the boundary and trust the types inside. Discriminated unions where the C code switches on a type tag. Exhaustive switches get `default: { const _exhaustive: never = x; }` only where the input type is closed.
