@@ -82,6 +82,16 @@ export let pm_maxspeed = 300;
 export let pm_duckspeed = 100;
 export let pm_accelerate = 10;
 export let pm_airaccelerate = 0;
+
+// C: `pm_airaccelerate = sv_airaccelerate->value;` (sv_init.c:SV_SpawnServer)
+// assigns the module-local straight through the extern pointer. This module
+// has no exported setter for a bare `export let` (ES module bindings are
+// read-only to importers), so sv_init.ts's SV_SpawnServer -- out of this
+// unit's SCOPE to edit -- needs this setter to wire the assignment through;
+// see report.
+export function SetPmAirAccelerate(v: number): void {
+  pm_airaccelerate = v;
+}
 export let pm_wateraccelerate = 10;
 export let pm_friction = 6;
 export let pm_waterfriction = 1;

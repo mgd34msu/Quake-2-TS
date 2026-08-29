@@ -16,7 +16,9 @@ import {
   DAMAGE_NO_PROTECTION,
   DEAD_NO,
   EdictT,
+  FL_FLY,
   FL_GODMODE,
+  FL_SWIM,
   g_edicts,
   game,
   GClientT,
@@ -27,8 +29,7 @@ import {
   SetGameImports,
   SetGEdicts,
 } from "../src/game/g_local";
-import { FindItem, InitItems, ITEM_INDEX } from "../src/game/g_items";
-import { PendingPort } from "../src/qcommon/pending";
+import { FindItem, InitItems, ITEM_INDEX, SetItemNames } from "../src/game/g_items";
 import { vec3 } from "../src/shared/math";
 import { CplaneT } from "../src/shared/q_shared";
 
@@ -167,8 +168,8 @@ function makeFakeGameExports(edicts: EdictT[], numEdicts: number): GameExports {
     ReadGame() {},
     WriteLevel() {},
     ReadLevel() {},
-    ClientConnect() {
-      return true;
+    ClientConnect(_ent: Edict, userinfo: string) {
+      return { allowed: true, userinfo };
     },
     ClientBegin() {},
     ClientUserinfoChanged() {},
@@ -352,6 +353,7 @@ describe("CheckArmor", () => {
     const ent = g_edicts[8];
     ent.client = new GClientT();
     InitItems();
+    SetItemNames();
     const jacket = FindItem("Jacket Armor");
     if (jacket === null) throw new Error("Jacket Armor missing from itemlist");
     ent.client.pers.inventory[ITEM_INDEX(jacket)] = 25;
@@ -439,17 +441,31 @@ describe("Killed", () => {
     expect(level.killed_monsters).toBe(0);
   });
 
-  test("a monster with a movetype that reaches monster_death_use is blocked by g_monster.ts's PendingPort stub", () => {
+  test("a monster with a target reaches monster_death_use, which clears FL_FLY/FL_SWIM and fires G_UseTargets with the killer as activator", () => {
     setupWorld();
+    globals.num_edicts = MAXENTITIES;
     const targ = g_edicts[9];
     targ.svflags = SVF_MONSTER;
     targ.deadflag = DEAD_NO;
     targ.movetype = MovetypeT.MOVETYPE_WALK; // not PUSH/STOP/NONE -> reaches monster_death_use
+    targ.flags = FL_FLY | FL_SWIM;
+    targ.target = "use1";
     targ.die = () => {};
     const attacker = g_edicts[10];
     const inflictor = g_edicts[11];
 
-    expect(() => Killed(targ, inflictor, attacker, 10, vec3())).toThrow(PendingPort);
+    const usedWith: { value: EdictT | null } = { value: null };
+    const useTarget = g_edicts[16];
+    useTarget.inuse = true;
+    useTarget.targetname = "use1";
+    useTarget.use = (_self, _other, act) => {
+      usedWith.value = act;
+    };
+
+    Killed(targ, inflictor, attacker, 10, vec3());
+
+    expect(targ.flags & (FL_FLY | FL_SWIM)).toBe(0);
+    expect(usedWith.value).toBe(attacker); // Killed() sets targ.enemy = attacker before monster_death_use fires it
   });
 });
 

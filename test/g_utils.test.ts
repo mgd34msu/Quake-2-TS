@@ -180,8 +180,8 @@ function makeFakeGameExports(edicts: EdictT[], numEdicts: number): GameExports {
     ReadGame() {},
     WriteLevel() {},
     ReadLevel() {},
-    ClientConnect() {
-      return true;
+    ClientConnect(_ent: Edict, userinfo: string) {
+      return { allowed: true, userinfo };
     },
     ClientBegin() {},
     ClientUserinfoChanged() {},

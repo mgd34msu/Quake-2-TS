@@ -222,7 +222,11 @@ export interface GameExports {
   WriteLevel(filename: string): void;
   ReadLevel(filename: string): void;
 
-  ClientConnect(ent: Edict, userinfo: string): boolean;
+  // C mutates `userinfo` in place (the game DLL can inject a "rejmsg" key on
+  // rejection) and returns qboolean; JS strings are immutable, so the
+  // mutated userinfo and the accept/reject flag are both returned instead.
+  // Settled interface ruling (U021b/followups.md): { allowed, userinfo }.
+  ClientConnect(ent: Edict, userinfo: string): { allowed: boolean; userinfo: string };
   ClientBegin(ent: Edict): void;
   ClientUserinfoChanged(ent: Edict, userinfo: string): void;
   ClientDisconnect(ent: Edict): void;

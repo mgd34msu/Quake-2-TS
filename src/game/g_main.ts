@@ -26,6 +26,7 @@ import { ClientEndServerFrame } from "./p_view";
 import { BeginIntermission } from "./p_hud";
 import { ServerCommand } from "./g_svcmds";
 import { G_Find, G_Spawn } from "./g_utils";
+import { SpawnEntities } from "./g_spawn";
 
 
 
@@ -77,17 +78,11 @@ function ReadLevel(filename: string): void {
   throw new PendingPort("g_save.c:ReadLevel");
 }
 
-// g_spawn.ts exports SP_worldspawn but not the top-level SpawnEntities
-// dispatcher (g_spawn.c:SpawnEntities).
-function SpawnEntities(mapname: string, entstring: string, spawnpoint: string): void {
-  throw new PendingPort("g_spawn.c:SpawnEntities");
-}
-
 // g_local.h attributes these four to "g_client.c" (a file that does not
 // exist in the C tree -- see p_client.ts's own header comment); grepping
 // the C tree shows their real definitions live in p_client.c, but
 // p_client.ts does not export them yet.
-function ClientConnect(ent: Edict, userinfo: string): boolean {
+function ClientConnect(ent: Edict, userinfo: string): { allowed: boolean; userinfo: string } {
   throw new PendingPort("p_client.c:ClientConnect");
 }
 function ClientBegin(ent: Edict): void {

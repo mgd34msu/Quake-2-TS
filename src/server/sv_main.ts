@@ -391,13 +391,11 @@ export function SVC_DirectConnect(): void {
   newcl.challenge = challenge; // save challenge for checksumming
 
   // get the game a chance to reject this connection or modify the userinfo.
-  // NOTE: GameExports.ClientConnect only returns a boolean (game.ts's
-  // interface), unlike the C signature which mutates `userinfo` in place
-  // (the game DLL can inject a "rejmsg" key on rejection). That channel is
-  // lost at this interface boundary -- see report -- so the rejmsg branch
-  // below can only ever see whatever was already in the client-supplied
-  // userinfo string.
-  if (!ge.ClientConnect(ent, userinfo)) {
+  // C mutates `userinfo` in place (the game DLL injects a "rejmsg" key on
+  // rejection); this port returns the mutated string alongside the verdict.
+  const connect = ge.ClientConnect(ent, userinfo);
+  userinfo = connect.userinfo;
+  if (!connect.allowed) {
     const rejmsg = Info_ValueForKey(userinfo, "rejmsg");
     if (rejmsg.length) Netchan_OutOfBandPrint(NetsrcT.NS_SERVER, adr, "print\n%s\nConnection refused.\n", rejmsg);
     else Netchan_OutOfBandPrint(NetsrcT.NS_SERVER, adr, "print\nConnection refused.\n");

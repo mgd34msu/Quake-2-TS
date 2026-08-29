@@ -37,6 +37,7 @@ import { SV_Multicast, SV_BroadcastCommand, SV_SendClientMessages } from "./sv_s
 import { geHolder, SV_InitGameProgs } from "./sv_game";
 import { SV_ReadLevelFile } from "./sv_ccmds";
 import { SV_ClearWorld } from "./sv_world";
+import { SetPmAirAccelerate } from "../qcommon/pmove";
 
 function requireGe(): GameExports {
   const ge = geHolder.ge;
@@ -203,13 +204,10 @@ export function SV_SpawnServer(server: string, spawnpoint: string, serverstate: 
   sv.configstrings[CS_NAME] = server;
   if (Cvar_VariableValue("deathmatch")) {
     sv.configstrings[CS_AIRACCEL] = Com_sprintf("%g", sv_airaccelerate ? sv_airaccelerate.value : 0);
-    // pm_airaccelerate = sv_airaccelerate->value -- qcommon/pmove.ts's
-    // pm_airaccelerate is a bare `export let` with no exported setter
-    // (pmove.ts is outside this unit's SCOPE), so it cannot be reassigned
-    // from here. See report -- pmove.ts needs a `SetPmAirAccelerate()` (or
-    // similar) for this assignment to be wired through faithfully.
+    SetPmAirAccelerate(sv_airaccelerate ? sv_airaccelerate.value : 0);
   } else {
     sv.configstrings[CS_AIRACCEL] = "0";
+    SetPmAirAccelerate(0);
   }
 
   SZ_Init(sv.multicast, sv.multicast_buf, sv.multicast_buf.length);

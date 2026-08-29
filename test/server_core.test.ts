@@ -7,7 +7,8 @@ import { NetadrT, NetadrtypeT, NetsrcT } from "../src/qcommon/qcommon";
 import { net_from, net_message } from "../src/qcommon/net_chan";
 import { NET_SendPacket, NET_GetPacket } from "../src/platform/net_udp";
 import { SZ_Init, MSG_BeginReading, MSG_ReadLong } from "../src/qcommon/sizebuf";
-import { Cvar_VariableString } from "../src/qcommon/cvar";
+import { Cvar_FullSet, Cvar_VariableString } from "../src/qcommon/cvar";
+import { CVAR_LATCH, CVAR_SERVERINFO } from "../src/shared/q_shared";
 import { MulticastT, EntityStateT, PlayerStateT } from "../src/shared/q_shared";
 import { vec3 } from "../src/shared/math";
 import { LinkT, SolidT, MAX_ENT_CLUSTERS, type Edict, type GameExports } from "../src/game/game";
@@ -81,8 +82,8 @@ function makeFakeGameExports(): GameExports {
     ReadGame() {},
     WriteLevel() {},
     ReadLevel() {},
-    ClientConnect() {
-      return true;
+    ClientConnect(_ent: Edict, userinfo: string) {
+      return { allowed: true, userinfo };
     },
     ClientBegin() {},
     ClientUserinfoChanged() {},
@@ -101,6 +102,12 @@ function makeFakeGameExports(): GameExports {
 
 describe("SV_Init", () => {
   test("registers cvars and sets initial server state", () => {
+    // cvars persist process-wide exactly as in C; an earlier suite may have
+    // changed maxclients, and Cvar_Get keeps the existing value. Reset to
+    // the registration default so the assertion holds in any file order.
+    Cvar_FullSet("maxclients", "1", CVAR_SERVERINFO | CVAR_LATCH);
+    sv.state = ServerStateT.ss_dead;
+    svs.initialized = false;
     SV_Init();
 
     expect(maxclients).not.toBeNull();

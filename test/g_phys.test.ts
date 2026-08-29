@@ -13,7 +13,6 @@ import { EdictT, FRAMETIME, MovetypeT, SetGameExports, SetGameImports, SetGEdict
 import { LinkT, SolidT, type Edict, type GameExports, type GameImports, type GTraceT } from "../src/game/game";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
 import { type Vec3, vec3 } from "../src/shared/math";
-import { PendingPort } from "../src/qcommon/pending";
 
 // ---------------------------------------------------------------------------
 // A fabricated GameImports: gi.trace defaults to "fraction 1, nothing hit"
@@ -98,7 +97,7 @@ function makeFakeGameExports(edicts: EdictT[]): GameExports {
     ReadGame: () => {},
     WriteLevel: () => {},
     ReadLevel: () => {},
-    ClientConnect: () => true,
+    ClientConnect: (_ent: Edict, userinfo: string) => ({ allowed: true, userinfo }),
     ClientBegin: () => {},
     ClientUserinfoChanged: () => {},
     ClientDisconnect: () => {},
@@ -302,12 +301,43 @@ describe("SV_Physics_Toss", () => {
   });
 });
 
-describe("SV_Physics_Step (partially untestable)", () => {
-  test("untestable while airborne: M_CheckGround (g_monster.ts, pending) runs whenever groundentity is unset", () => {
-    const ent = new EdictT();
-    ent.groundentity = null; // forces the "airborn monsters should always check for ground" call
+describe("SV_Physics_Step", () => {
+  test("a falling MOVETYPE_STEP monster gains groundentity and zeroes vertical velocity when M_CheckGround's floor trace hits solid ground", () => {
+    const worldEdict = new EdictT();
+    const groundEdict = new EdictT();
+    groundEdict.s.number = 1;
+    groundEdict.linkcount = 3;
+    SetGEdicts([worldEdict, groundEdict]);
 
-    expect(() => SV_Physics_Step(ent)).toThrow(PendingPort);
+    const floorPlane = new CplaneT();
+    floorPlane.normal[2] = 1;
+
+    const { gi: fakeGi } = makeFakeGameImports((_start, _mins, _maxs, end) => ({
+      allsolid: false,
+      startsolid: false,
+      fraction: 0,
+      endpos: vec3(end[0], end[1], end[2]),
+      plane: floorPlane,
+      surface: null,
+      contents: 0,
+      ent: groundEdict,
+    }));
+    SetGameImports(fakeGi);
+    SetGameExports(makeFakeGameExports([worldEdict, groundEdict]));
+    gameCvars.sv_maxvelocity = setCvar(2000);
+    gameCvars.sv_gravity = setCvar(800);
+
+    const ent = new EdictT();
+    ent.inuse = true;
+    ent.movetype = MovetypeT.MOVETYPE_STEP;
+    // ent.groundentity starts null (EdictT's default), which forces the
+    // "airborn monsters should always check for ground" M_CheckGround call
+    ent.velocity[2] = -50; // falling
+
+    SV_Physics_Step(ent);
+
+    expect(ent.groundentity).toBe(groundEdict);
+    expect(ent.velocity[2]).toBe(0);
   });
 });
 
