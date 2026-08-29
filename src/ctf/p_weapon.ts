@@ -38,6 +38,7 @@ import {
   PITCH,
   PMF_DUCKED,
   PRINT_HIGH,
+  Q_stricmp,
   ROLL,
   YAW,
 } from "../shared/q_shared";
@@ -72,6 +73,12 @@ import { SVF_NOCLIENT } from "./game";
 import { Add_Ammo, Drop_Item, FindItem, ITEM_INDEX, SetRespawn } from "./g_items";
 import { G_ProjectSource, G_Spawn } from "./g_utils";
 import { fire_bfg, fire_blaster, fire_bullet, fire_grenade, fire_grenade2, fire_rail, fire_rocket, fire_shotgun } from "./g_weapon";
+// ZOID: g_ctf.ts imports Weapon_Generic/P_ProjectSource/PlayerNoise from this
+// file, so this is a value cycle; both sides are `function` declarations
+// (hoisted, live bindings), which ES modules resolve safely across cycles
+// as long as they aren't invoked during top-level evaluation -- they are
+// only called from inside other functions here, so a static import is safe.
+import { CTFApplyHaste, CTFApplyHasteSound, CTFApplyStrengthSound } from "./g_ctf";
 
 // g_local.h's DEFAULT_BULLET_HSPREAD/VSPREAD and DEFAULT_*SHOTGUN* family
 // live in g_local.h, but this file's SCOPE does not include g_local.ts;
@@ -415,7 +422,7 @@ Weapon_Generic
 A generic function to handle the basics of weapon thinking
 ================
 */
-export function Weapon_Generic(
+function Weapon_Generic2(
   ent: EdictT,
   FRAME_ACTIVATE_LAST: number,
   FRAME_FIRE_LAST: number,
@@ -457,9 +464,11 @@ export function Weapon_Generic(
   }
 
   if (client.weaponstate === WeaponstateT.WEAPON_ACTIVATING) {
-    if (client.ps.gunframe === FRAME_ACTIVATE_LAST) {
+    if (client.ps.gunframe === FRAME_ACTIVATE_LAST || cvarNum(gameCvars.instantweap) !== 0) {
       client.weaponstate = WeaponstateT.WEAPON_READY;
       client.ps.gunframe = FRAME_IDLE_FIRST;
+      // we go recursive here to instant ready the weapon
+      Weapon_Generic2(ent, FRAME_ACTIVATE_LAST, FRAME_FIRE_LAST, FRAME_IDLE_LAST, FRAME_DEACTIVATE_LAST, pause_frames, fire_frames, fire);
       return;
     }
 
@@ -469,7 +478,12 @@ export function Weapon_Generic(
 
   if (client.newweapon !== null && client.weaponstate !== WeaponstateT.WEAPON_FIRING) {
     client.weaponstate = WeaponstateT.WEAPON_DROPPING;
-    client.ps.gunframe = FRAME_DEACTIVATE_FIRST;
+    if (cvarNum(gameCvars.instantweap) !== 0) {
+      ChangeWeapon(ent);
+      return;
+    } else {
+      client.ps.gunframe = FRAME_DEACTIVATE_FIRST;
+    }
 
     if (FRAME_DEACTIVATE_LAST - FRAME_DEACTIVATE_FIRST < 4) {
       client.anim_priority = ANIM_REVERSE;
@@ -532,9 +546,12 @@ export function Weapon_Generic(
     let matched = false;
     for (const ff of fire_frames) {
       if (client.ps.gunframe === ff) {
-        if (client.quad_framenum > level.framenum) {
-          gi.sound(ent, CHAN_ITEM, gi.soundindex("items/damage3.wav"), 1, ATTN_NORM, 0);
+        if (!CTFApplyStrengthSound(ent)) {
+          if (client.quad_framenum > level.framenum) {
+            gi.sound(ent, CHAN_ITEM, gi.soundindex("items/damage3.wav"), 1, ATTN_NORM, 0);
+          }
         }
+        CTFApplyHasteSound(ent);
 
         fire(ent);
         matched = true;
@@ -545,6 +562,33 @@ export function Weapon_Generic(
     if (!matched) client.ps.gunframe++;
 
     if (client.ps.gunframe === FRAME_IDLE_FIRST + 1) client.weaponstate = WeaponstateT.WEAPON_READY;
+  }
+}
+
+export function Weapon_Generic(
+  ent: EdictT,
+  FRAME_ACTIVATE_LAST: number,
+  FRAME_FIRE_LAST: number,
+  FRAME_IDLE_LAST: number,
+  FRAME_DEACTIVATE_LAST: number,
+  pause_frames: number[],
+  fire_frames: number[],
+  fire: (ent: EdictT) => void,
+): void {
+  const client = ent.client;
+  if (client === null) return;
+
+  const oldstate = client.weaponstate;
+
+  Weapon_Generic2(ent, FRAME_ACTIVATE_LAST, FRAME_FIRE_LAST, FRAME_IDLE_LAST, FRAME_DEACTIVATE_LAST, pause_frames, fire_frames, fire);
+
+  const isGrapple = client.pers.weapon !== null && client.pers.weapon.pickup_name !== null && Q_stricmp(client.pers.weapon.pickup_name, "Grapple") === 0;
+
+  // run the weapon frame again if hasted
+  if (isGrapple && client.weaponstate === WeaponstateT.WEAPON_FIRING) return;
+
+  if ((CTFApplyHaste(ent) || (isGrapple && client.weaponstate !== WeaponstateT.WEAPON_FIRING)) && oldstate === client.weaponstate) {
+    Weapon_Generic2(ent, FRAME_ACTIVATE_LAST, FRAME_FIRE_LAST, FRAME_IDLE_LAST, FRAME_DEACTIVATE_LAST, pause_frames, fire_frames, fire);
   }
 }
 
@@ -587,8 +631,6 @@ function weapon_grenade_fire(ent: EdictT, held: boolean): void {
     // VWep animations screw up corpses
     return;
   }
-
-  if (ent.health <= 0) return;
 
   if (client.ps.pmove.pm_flags & PMF_DUCKED) {
     client.anim_priority = ANIM_ATTACK;
