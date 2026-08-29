@@ -3,7 +3,7 @@
 // Encode a client frame onto the network channel; build a client frame
 // structure (PVS/PHS visibility culling); record unmerged demo messages.
 
-import { writeSync } from "node:fs";
+import { FS_Write } from "../qcommon/files";
 import { type Vec3, vec3, VectorSubtract, VectorLength, VectorCopy } from "../shared/math";
 import { EntityStateT, PlayerStateT, MAX_STATS, RF_BEAM } from "../shared/q_shared";
 import {
@@ -594,17 +594,8 @@ export function SV_RecordDemoMessage(): void {
   SZ_Clear(svs.demo_multicast);
 
   // now write the entire message to the file, prefixed by the length
-  //
-  // src/qcommon/files.ts (PORTING.md's sole owner of node:fs sync calls)
-  // exposes only read primitives today (FS_FOpenFile/FS_Read/FS_FCloseFile,
-  // all opened "r"); it has no FS_Write(handle, data) equivalent, and
-  // adding one is outside this unit's SCOPE (src/server/sv_ents.ts only).
-  // Falls back to node:fs's writeSync directly against the numeric handle
-  // as a stopgap -- reported as a deviation. In practice svs.demofile is
-  // only ever non-null once a "serverrecord" console command opens it
-  // (sv_ccmds.ts, unported), so this path is currently unreachable.
   const lenBuf = new Uint8Array(4);
   new DataView(lenBuf.buffer).setInt32(0, buf.cursize, true);
-  writeSync(svs.demofile, lenBuf);
-  writeSync(svs.demofile, buf.data.subarray(0, buf.cursize));
+  FS_Write(lenBuf, 4, svs.demofile);
+  FS_Write(buf.data.subarray(0, buf.cursize), buf.cursize, svs.demofile);
 }

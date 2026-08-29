@@ -3,29 +3,28 @@
 // These commands can only be entered from stdin or by a remote operator
 // datagram (OPERATOR CONSOLE ONLY COMMANDS, per the C header comment).
 //
-// File-I/O gap: PORTING.md restricts raw node:fs use to src/platform/ and
-// src/qcommon/files.ts. files.ts (out of this unit's SCOPE to extend) only
-// exports read primitives (FS_FOpenFile/FS_Read/FS_LoadFile), FS_ListFiles
-// (glob enumeration), and FS_CreatePath (mkdir) -- there is no
-// FS_WriteFile/FS_Remove/FS_CopyFile. Every C fwrite()/remove()/
-// fopen(...,"wb") call below (SV_WipeSavegame's remove(), CopyFile's fwrite
-// loop, SV_WriteLevelFile's and SV_WriteServerFile's fopen(...,"wb")) is
-// therefore a documented no-op (logged, not thrown, so ordinary "map"/
-// "gamemap" flow is not blocked by save-adjacent bookkeeping) rather than a
-// forbidden direct node:fs call or a silent success. See report -- files.ts
-// needs FS_WriteFile/FS_Remove/FS_CopyFile from its owner before savegame
-// persistence can round-trip for real. Every one of these functions also
-// still calls through to `ge.WriteLevel`/`ReadLevel`/`WriteGame`/`ReadGame`,
-// which throw PendingPort until g_save.c lands (g_main.ts's placeholder) --
-// that is the actually-blocking reason `save`/`load` cannot complete yet,
-// not this file-I/O gap.
+// File-I/O: files.ts now exports write primitives (FS_WriteFile,
+// FS_RemoveFile, FS_ReadRawFile, FS_FOpenFileWrite, FS_Write) alongside its
+// original read primitives, so every C fwrite()/remove()/fopen(...,"wb")
+// call below (SV_WipeSavegame's remove(), CopyFile's fwrite loop,
+// SV_WriteLevelFile's and SV_WriteServerFile's fopen(...,"wb"),
+// SV_ServerRecord_f's demo file) now does the real thing instead of a
+// logged no-op. SV_WriteLevelFile/SV_WriteServerFile/SV_ServerRecord_f still
+// call through to `ge.WriteLevel`/`WriteGame`/(SV_ReadServerFile's
+// `ge.ReadGame`), which throw PendingPort until g_save.ts lands (a sibling
+// unit's concurrent work, not touched here) -- that remains the actually-
+// blocking reason `save`/`load` cannot complete end-to-end yet, not a
+// file-I/O gap.
 
 import { Com_sprintf, MAX_OSPATH, MAX_TOKEN_CHARS, MAX_QPATH, CS_NAME, STAT_HEALTH, STAT_FRAGS, PRINT_HIGH, PRINT_CHAT, CVAR_LATCH, PlayerStateT, BigShort, MAX_CONFIGSTRINGS } from "../shared/q_shared";
-import { SysError, NetadrT, NetsrcT, PORT_MASTER } from "../qcommon/qcommon";
+import { SysError, NetadrT, NetsrcT, PORT_MASTER, SvcOpsT, PROTOCOL_VERSION } from "../qcommon/qcommon";
 import { Com_Printf, Com_DPrintf, Info_Print, dedicated } from "../qcommon/common";
-import { Cvar_Set, Cvar_VariableValue, Cvar_ForceSet, Cvar_Serverinfo, cvar_vars } from "../qcommon/cvar";
+import { Cvar_Set, Cvar_VariableValue, Cvar_VariableString, Cvar_ForceSet, Cvar_Serverinfo, cvar_vars } from "../qcommon/cvar";
 import { Cmd_Argc, Cmd_Argv, Cmd_Args, Cmd_AddCommand } from "../qcommon/cmd";
-import { FS_Gamedir, FS_CreatePath, FS_FOpenFile, FS_FCloseFile, FS_Read, FS_ListFiles, FS_LoadFile } from "../qcommon/files";
+import { FS_Gamedir, FS_CreatePath, FS_FOpenFile, FS_FCloseFile, FS_Read, FS_ListFiles, FS_LoadFile, FS_WriteFile, FS_RemoveFile, FS_ReadRawFile, FS_FOpenFileWrite, FS_Write } from "../qcommon/files";
+import { SizeBuf, SZ_Init, MSG_WriteByte, MSG_WriteShort, MSG_WriteLong, MSG_WriteString } from "../qcommon/sizebuf";
+import { CM_WritePortalState, CM_ReadPortalState } from "../qcommon/cmodel";
+import { MAX_MAP_AREAPORTALS } from "../qcommon/qfiles";
 import { Netchan_OutOfBandPrint } from "../qcommon/net_chan";
 import { NET_StringToAdr, NET_AdrToString, NET_Config } from "../platform/net_udp";
 import type { GameExports } from "../game/game";
@@ -196,17 +195,14 @@ Delete save/<XXX>/
 function SV_WipeSavegame(savename: string): void {
   Com_DPrintf("SV_WipeSaveGame(%s)\n", savename);
 
-  // remove(server.ssv)/remove(game.ssv) + a *.sav/*.sv2 glob-delete via
-  // Sys_FindFirst/Sys_FindNext -- no delete primitive exists on this port's
-  // sanctioned file-I/O surface (see this file's header comment).
-  // FS_ListFiles can still enumerate the matching files for the log below;
-  // nothing here actually deletes them.
   const dir = `${FS_Gamedir()}/save/${savename}`;
-  const savs = FS_ListFiles(`${dir}/*.sav`) ?? [];
-  const sv2s = FS_ListFiles(`${dir}/*.sv2`) ?? [];
-  if (savs.length || sv2s.length) {
-    Com_DPrintf("SV_WipeSavegame: %i .sav/.sv2 file(s) left on disk (no delete primitive)\n", savs.length + sv2s.length);
-  }
+  FS_RemoveFile(`${dir}/server.ssv`);
+  FS_RemoveFile(`${dir}/game.ssv`);
+
+  // Sys_FindFirst/Sys_FindNext glob-delete loops become FS_ListFiles +
+  // FS_RemoveFile per match.
+  for (const path of FS_ListFiles(`${dir}/*.sav`) ?? []) FS_RemoveFile(path);
+  for (const path of FS_ListFiles(`${dir}/*.sv2`) ?? []) FS_RemoveFile(path);
 }
 
 /*
@@ -216,9 +212,15 @@ CopyFile
 */
 function CopyFile(src: string, dst: string): void {
   Com_DPrintf("CopyFile (%s, %s)\n", src, dst);
-  // fopen(src,"rb") + fopen(dst,"wb") + fread/fwrite loop -- no write
-  // primitive exists on this port's sanctioned file-I/O surface (see this
-  // file's header comment). Best-effort no-op.
+
+  // fopen(src,"rb") + fopen(dst,"wb") + fread/fwrite loop. src/dst are
+  // already fully-qualified filesystem paths (built off FS_Gamedir()), not
+  // filenames to resolve through the virtual quake search path, so the raw
+  // (non-virtual) FS_ReadRawFile/FS_WriteFile pair is used rather than
+  // FS_LoadFile/FS_FOpenFile.
+  const data = FS_ReadRawFile(src);
+  if (data === null) return; // f1 = fopen(src,"rb"); if (!f1) return;
+  FS_WriteFile(dst, data);
 }
 
 /*
@@ -269,6 +271,21 @@ function decodeConfigstringsBlock(buf: Uint8Array): void {
   }
 }
 
+// Reverse of decodeConfigstringsBlock: packs sv.configstrings back into the
+// same fixed-width (MAX_CONFIGSTRINGS * MAX_QPATH), null-padded byte layout
+// fwrite(sv.configstrings, sizeof(sv.configstrings), 1, f) produces in C.
+function encodeConfigstringsBlock(): Uint8Array {
+  const buf = new Uint8Array(MAX_CONFIGSTRINGS * MAX_QPATH);
+  for (let i = 0; i < MAX_CONFIGSTRINGS; i++) {
+    const base = i * MAX_QPATH;
+    const s = sv.configstrings[i];
+    for (let j = 0; j < s.length && j < MAX_QPATH; j++) {
+      buf[base + j] = s.charCodeAt(j) & 0xff;
+    }
+  }
+  return buf;
+}
+
 /*
 ==============
 SV_WriteLevelFile
@@ -279,10 +296,12 @@ function SV_WriteLevelFile(): void {
   Com_DPrintf("SV_WriteLevelFile()\n");
 
   const name = `${FS_Gamedir()}/save/current/${sv.name}.sv2`;
-  // fopen(name,"wb") + fwrite(sv.configstrings) + CM_WritePortalState(f) --
-  // no write primitive on this port's sanctioned file-I/O surface; see this
-  // file's header comment.
-  Com_Printf("SV_WriteLevelFile: skipping local write of %s (no write primitive)\n", name);
+  // fopen(name,"wb") + fwrite(sv.configstrings) + CM_WritePortalState(f)
+  const portalState = CM_WritePortalState();
+  const combined = new Uint8Array(MAX_CONFIGSTRINGS * MAX_QPATH + portalState.length);
+  combined.set(encodeConfigstringsBlock(), 0);
+  combined.set(portalState, MAX_CONFIGSTRINGS * MAX_QPATH);
+  FS_WriteFile(name, combined);
 
   const savename = `${FS_Gamedir()}/save/current/${sv.name}.sav`;
   requireGe().WriteLevel(savename);
@@ -305,10 +324,9 @@ function SV_ReadLevelFile(): void {
     const buf = new Uint8Array(MAX_CONFIGSTRINGS * MAX_QPATH);
     FS_Read(buf, buf.length, open.handle);
     decodeConfigstringsBlock(buf);
-    // CM_ReadPortalState is intentionally not called here: nothing in this
-    // port ever writes the portal-state bytes that would follow (see
-    // SV_WriteLevelFile above), so there is nothing valid to read back yet.
-    // See report.
+    const portalBuf = new Uint8Array(MAX_MAP_AREAPORTALS);
+    FS_Read(portalBuf, portalBuf.length, open.handle);
+    CM_ReadPortalState(portalBuf);
     FS_FCloseFile(open.handle);
   }
 
@@ -323,6 +341,15 @@ function bytesToNulString(buf: Uint8Array): string {
     s += String.fromCharCode(buf[i]);
   }
   return s;
+}
+
+// Reverse of bytesToNulString: packs a string into a fixed-width,
+// null-padded byte buffer, matching a C `memset(buf, 0, sizeof(buf));
+// strcpy(buf, s);` pair ahead of an fwrite(buf, 1, sizeof(buf), f).
+function stringToFixedBuf(s: string, len: number): Uint8Array {
+  const buf = new Uint8Array(len);
+  for (let i = 0; i < s.length && i < len; i++) buf[i] = s.charCodeAt(i) & 0xff;
+  return buf;
 }
 
 /*
@@ -348,12 +375,31 @@ function SV_WriteServerFile(autosave: boolean): void {
   }
 
   // fopen(name,"wb") + fwrite(comment)/fwrite(svs.mapcmd)/fwrite(each
-  // CVAR_LATCH cvar's name+value) -- no write primitive on this port's
-  // sanctioned file-I/O surface; see this file's header comment.
+  // CVAR_LATCH cvar's name+value)
+  const parts: Uint8Array[] = [stringToFixedBuf(comment, 32), stringToFixedBuf(svs.mapcmd, MAX_TOKEN_CHARS)];
+
   let latchedCount = 0;
-  for (const v of cvar_vars.values()) if (v.flags & CVAR_LATCH) latchedCount++;
-  Com_Printf("SV_WriteServerFile: skipping local write of %s (no write primitive)\n", name);
-  Com_DPrintf("SV_WriteServerFile: would persist comment=\"%s\" mapcmd=\"%s\" %i latched cvar(s)\n", comment, svs.mapcmd, latchedCount);
+  for (const v of cvar_vars.values()) {
+    if (!(v.flags & CVAR_LATCH)) continue;
+    if (v.name.length >= MAX_OSPATH - 1 || v.string.length >= 128 - 1) {
+      Com_Printf("Cvar too long: %s = %s\n", v.name, v.string);
+      continue;
+    }
+    parts.push(stringToFixedBuf(v.name, MAX_OSPATH));
+    parts.push(stringToFixedBuf(v.string, 128));
+    latchedCount++;
+  }
+
+  let total = 0;
+  for (const p of parts) total += p.length;
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) {
+    combined.set(p, offset);
+    offset += p.length;
+  }
+  FS_WriteFile(name, combined);
+  Com_DPrintf("SV_WriteServerFile: wrote comment=\"%s\" mapcmd=\"%s\" %i latched cvar(s)\n", comment, svs.mapcmd, latchedCount);
 
   // write game state
   const gameName = `${FS_Gamedir()}/save/current/game.ssv`;
@@ -811,14 +857,52 @@ function SV_ServerRecord_f(): void {
 
   Com_Printf("recording to %s.\n", name);
   FS_CreatePath(name);
+  const handle = FS_FOpenFileWrite(name);
+  if (handle === null) {
+    Com_Printf("ERROR: couldn't open.\n");
+    return;
+  }
+  svs.demofile = handle;
 
-  // fopen(name, "wb") -- no write primitive on this port's sanctioned file
-  // I/O surface (see this file's header comment); this always takes the C
-  // "couldn't open" failure branch instead of fabricating a fake handle, so
-  // the rest of the recording setup (SZ_Init'ing svs.demo_multicast, the
-  // signon-message dump) is correctly never reached, matching what a real
-  // fopen() failure would do.
-  Com_Printf("ERROR: couldn't open.\n");
+  // setup a buffer to catch all multicasts
+  SZ_Init(svs.demo_multicast, svs.demo_multicast_buf, svs.demo_multicast_buf.length);
+
+  //
+  // write a single giant fake message with all the startup info
+  //
+  const buf = new SizeBuf();
+  const buf_data = new Uint8Array(32768);
+  SZ_Init(buf, buf_data, buf_data.length);
+
+  // serverdata needs to go over for all types of servers
+  // to make sure the protocol is right, and to set the gamedir
+  //
+  // send the serverdata
+  MSG_WriteByte(buf, SvcOpsT.svc_serverdata);
+  MSG_WriteLong(buf, PROTOCOL_VERSION);
+  MSG_WriteLong(buf, svs.spawncount);
+  MSG_WriteByte(buf, 2); // demos are always attract loops
+  MSG_WriteString(buf, Cvar_VariableString("gamedir"));
+  MSG_WriteShort(buf, -1);
+  // send full levelname
+  MSG_WriteString(buf, sv.configstrings[CS_NAME]);
+
+  for (let i = 0; i < MAX_CONFIGSTRINGS; i++) {
+    if (sv.configstrings[i].length) {
+      MSG_WriteByte(buf, SvcOpsT.svc_configstring);
+      MSG_WriteShort(buf, i);
+      MSG_WriteString(buf, sv.configstrings[i]);
+    }
+  }
+
+  // write it to the demo file
+  Com_DPrintf("signon message length: %i\n", buf.cursize);
+  const lenBuf = new Uint8Array(4);
+  new DataView(lenBuf.buffer).setInt32(0, buf.cursize, true);
+  FS_Write(lenBuf, 4, svs.demofile);
+  FS_Write(buf.data.subarray(0, buf.cursize), buf.cursize, svs.demofile);
+
+  // the rest of the demo file will be individual frames
 }
 
 /*

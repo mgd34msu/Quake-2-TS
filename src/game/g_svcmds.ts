@@ -1,14 +1,17 @@
 // g_svcmds.c
 //
-// File-I/O gap: PORTING.md restricts raw node:fs use to src/platform/ and
-// src/qcommon/files.ts. files.ts (out of this unit's SCOPE to extend) only
-// exports read primitives (FS_FOpenFile/FS_Read/FS_LoadFile), FS_ListFiles
-// and FS_CreatePath -- there is no FS_WriteFile. SVCmd_WriteIP_f's C
-// fopen(...,"wb")/fprintf/fclose sequence is therefore a documented no-op
-// (logged, not thrown) rather than a forbidden direct node:fs call or a
-// silent success. Same precedent as sv_ccmds.ts's savegame writes.
+// File-I/O: files.ts now exports FS_WriteFile alongside its read
+// primitives, so SVCmd_WriteIP_f's C fopen(...,"wb")/fprintf/fclose
+// sequence writes the real file below. This does cross straight into
+// qcommon/files.ts rather than going through the GameImports (`gi`)
+// boundary PORTING.md otherwise keeps between game and engine code -- the
+// same is true of the C original, which calls fopen()/fprintf() directly
+// from the game DLL rather than through any game_import_t entry point, so a
+// direct files.ts import here is the faithful equivalent, not a boundary
+// violation.
 
 import { Com_sprintf, PRINT_HIGH, Q_stricmp } from "../shared/q_shared";
+import { FS_WriteFile } from "../qcommon/files";
 import { GAMEVERSION, gameCvars, gi } from "./g_local";
 
 /*
@@ -213,9 +216,18 @@ export function SVCmd_WriteIP_f(): void {
 
   gi.cprintf(null, PRINT_HIGH, `Writing ${name}.\n`);
 
-  // See file-I/O gap note at the top of this file: no FS_WriteFile primitive
-  // exists yet, so the fopen/fprintf/fclose sequence below is a logged no-op.
-  gi.dprintf(`g_svcmds.c:SVCmd_WriteIP_f: no FS_WriteFile primitive -- ${name} was not written\n`);
+  const filterbanValue = gameCvars.filterban === null ? 0 : Math.trunc(gameCvars.filterban.value);
+
+  let text = `set filterban ${filterbanValue}\n`;
+  for (const f of ipFilterList.filters) {
+    const b0 = f.compare & 0xff;
+    const b1 = (f.compare >>> 8) & 0xff;
+    const b2 = (f.compare >>> 16) & 0xff;
+    const b3 = (f.compare >>> 24) & 0xff;
+    text += `sv addip ${b0}.${b1}.${b2}.${b3}\n`;
+  }
+
+  FS_WriteFile(name, text);
 }
 
 /*

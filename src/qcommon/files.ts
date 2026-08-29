@@ -43,8 +43,17 @@
 //   itself is dropped (owning module: src/client/cl_cin.ts). WIN32-only
 //   branches (FS_ListFiles' strlwr under _WIN32) are dropped per PORTING.md's
 //   "take the portable path" rule.
+// - Write primitives (FS_WriteFile/FS_RemoveFile/FS_ReadRawFile/
+//   FS_FOpenFileWrite/FS_Write) were added after the initial port to unblock
+//   sv_ccmds.ts/g_svcmds.ts/sv_ents.ts call sites that previously had to
+//   defer with a logged no-op. FS_ReadRawFile/FS_FOpenFileWrite/FS_WriteFile
+//   take a literal on-disk path (as fopen() does) rather than resolving
+//   through fs_links/fs_searchpaths/pak files the way FS_FOpenFile does --
+//   every call site for these (savegame files, listip.cfg, demo files)
+//   already builds a fully-qualified path off FS_Gamedir() itself, exactly
+//   as the C originals' fopen(name, "wb")/fopen(src, "rb") do.
 
-import { openSync, closeSync, readSync, fstatSync, existsSync, readdirSync, mkdirSync } from "node:fs";
+import { openSync, closeSync, readSync, writeSync, writeFileSync, unlinkSync, fstatSync, existsSync, readdirSync, mkdirSync } from "node:fs";
 import { type CvarT, CVAR_NOSET, CVAR_LATCH, CVAR_SERVERINFO, Q_strcasecmp } from "../shared/q_shared";
 import { Com_Error, Com_Printf, Com_DPrintf, dedicated } from "./common";
 import { ERR_FATAL, BASEDIRNAME } from "./qcommon";
@@ -176,6 +185,111 @@ export function FS_CreatePath(path: string): void {
       if (errnoCode(err) !== "EEXIST") throw err;
     }
   }
+}
+
+/*
+==============
+FS_WriteFile
+
+Writes data to a file relative to the quake search path (the caller
+supplies the full on-disk path, typically built from FS_Gamedir()), creating
+any missing parent directories first (FS_CreatePath semantics). Stands in
+for the C idiom `fopen(name, "wb"); fwrite(...); fclose();` for callers that
+just need to dump a whole buffer at once (savegame files, config dumps) --
+see FS_FOpenFileWrite/FS_Write below for the streaming/append case.
+==============
+*/
+export function FS_WriteFile(path: string, data: Uint8Array | string): void {
+  FS_CreatePath(path);
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  writeFileSync(path, bytes);
+}
+
+/*
+==============
+FS_RemoveFile
+
+Stands in for the C `remove()` calls (SV_WipeSavegame's server.ssv/game.ssv/
+*.sav/*.sv2 cleanup); like `remove()`, a missing file is not an error.
+==============
+*/
+export function FS_RemoveFile(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch (err) {
+    if (errnoCode(err) !== "ENOENT") throw err;
+  }
+}
+
+/*
+==============
+FS_ReadRawFile
+
+Reads a literal on-disk path directly (no fs_links/fs_searchpaths/pak
+lookup), returning null on any open failure. Stands in for the C idiom
+`fopen(path, "rb")` used by call sites (CopyFile) that already hold a
+fully-qualified filesystem path (typically built from FS_Gamedir()) rather
+than a filename to resolve through the virtual quake search path -- the
+same distinction FS_WriteFile/FS_FOpenFileWrite draw on the write side.
+==============
+*/
+export function FS_ReadRawFile(path: string): Uint8Array | null {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  const size = fstatSync(fd).size;
+  const buf = new Uint8Array(size);
+  readSync(fd, buf, 0, size, 0);
+  closeSync(fd);
+  return buf;
+}
+
+/*
+==============
+FS_FOpenFileWrite
+
+Opens (creating/truncating) a literal on-disk path for writing, creating any
+missing parent directories first, and returns a handle from the same
+fs_open_handles table FS_FOpenFile/FS_Read/FS_FCloseFile use -- callers that
+need to stream writes across multiple calls (SV_ServerRecord_f's demo file,
+read back a chunk at a time by FS_Write below) get an open handle rather
+than a whole-buffer FS_WriteFile call. Returns null on failure, matching
+fopen(name, "wb") returning NULL.
+==============
+*/
+export function FS_FOpenFileWrite(path: string): number | null {
+  FS_CreatePath(path);
+  let fd: number;
+  try {
+    fd = openSync(path, "w");
+  } catch {
+    return null;
+  }
+  const handle = fs_next_handle++;
+  fs_open_handles.set(handle, { fd, position: 0 });
+  return handle;
+}
+
+/*
+==============
+FS_Write
+
+Writes len bytes from buffer to the given open handle (as returned by
+FS_FOpenFileWrite), advancing that handle's write cursor. Mirrors FS_Read's
+shape on the write side.
+==============
+*/
+export function FS_Write(buffer: Uint8Array, len: number, handle: number): void {
+  const h = fs_open_handles.get(handle);
+  if (!h) {
+    Com_Error(ERR_FATAL, "FS_Write: bad handle");
+  }
+
+  writeSync(h.fd, buffer, 0, len, h.position);
+  h.position += len;
 }
 
 /*
