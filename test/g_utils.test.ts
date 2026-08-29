@@ -584,10 +584,12 @@ describe("KillBox", () => {
       ent: blocker,
     };
 
-    // T_Damage is a PendingPort stub in g_combat.ts; KillBox reaching it and
-    // letting the throw propagate proves the call path (MOD_TELEFRAG import
-    // used here confirms it wires the right means-of-death constant too).
+    blocker.takedamage = 1;
+    blocker.inuse = true;
+    blocker.health = 50;
+
     expect(MOD_TELEFRAG).toBe(21);
-    expect(() => KillBox(ent)).toThrow(PendingPort);
+    expect(KillBox(ent)).toBe(false);
+    expect(blocker.health).toBeLessThan(50);
   });
 });

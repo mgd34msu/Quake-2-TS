@@ -61,6 +61,14 @@ export const FL_RESPAWN = 0x80000000; // used for item respawning
 
 export const FRAMETIME = 0.1;
 
+// damage flags (g_combat.c's T_Damage `dflags` parameter -- not edict->flags)
+export const DAMAGE_RADIUS = 0x00000001; // damage was indirect
+export const DAMAGE_NO_ARMOR = 0x00000002; // armour does not protect from this damage
+export const DAMAGE_ENERGY = 0x00000004; // damage is from an energy based weapon
+export const DAMAGE_NO_KNOCKBACK = 0x00000008; // do not affect velocity, just view angles
+export const DAMAGE_BULLET = 0x00000010; // damage is from a bullet (used for ricochets)
+export const DAMAGE_NO_PROTECTION = 0x00000020; // armor, shields, invulnerability, and godmode have no effect
+
 // Memory tags (TAG_GAME / TAG_LEVEL) are DROPPED per PORTING.md: "Z_Malloc/
 // Z_Free/Hunk_*/Z_TagMalloc -> plain allocation; tag-freeing loops become
 // explicit list clears." There is no tag-scoped allocator on this side of

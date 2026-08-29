@@ -26,17 +26,18 @@ import {
 } from "../shared/q_shared";
 import { T_Damage } from "./g_combat";
 import { type Edict, SolidT, SVF_MONSTER } from "./game";
-import { BODY_QUEUE_SIZE, type EdictT, g_edicts, game, gameCvars, gi, globals, level, MOD_TELEFRAG } from "./g_local";
-
-// `dflags` bit used below. g_local.h declares the whole DAMAGE_* set
-// (DAMAGE_RADIUS, DAMAGE_NO_ARMOR, DAMAGE_ENERGY, DAMAGE_NO_KNOCKBACK,
-// DAMAGE_BULLET, DAMAGE_NO_PROTECTION) next to the other edict flag blocks
-// in g_local.ts. Only DAMAGE_NO_PROTECTION is needed by this file (KillBox);
-// this worker's SCOPE is src/game/g_utils.ts only, so it is declared locally
-// here rather than added to g_local.ts. Reported as a deviation -- the
-// owning worker for g_combat.c/g_local.ts should relocate this constant
-// alongside its siblings when that module lands.
-const DAMAGE_NO_PROTECTION = 0x00000020;
+import {
+  BODY_QUEUE_SIZE,
+  DAMAGE_NO_PROTECTION,
+  type EdictT,
+  g_edicts,
+  game,
+  gameCvars,
+  gi,
+  globals,
+  level,
+  MOD_TELEFRAG,
+} from "./g_local";
 
 export function G_ProjectSource(point: Vec3, distance: Vec3, forward: Vec3, right: Vec3, result: Vec3): void {
   result[0] = point[0] + forward[0] * distance[0] + right[0] * distance[1];
