@@ -51,17 +51,11 @@ function currentSvPlayer(): ClientT["edict"] {
   return svPlayerHolder.sv_player;
 }
 
-// SV_InitGameProgs throws PendingPort partway through (see header comment);
-// every test that needs `geHolder.ge`/`gi` populated calls this once and
-// swallows exactly that expected throw.
+// g_save.ts's InitGame is real now: SV_InitGameProgs runs end-to-end,
+// registering game cvars through the real Cvar_Get and allocating
+// g_edicts/game.clients.
 function initGameProgsExpectingPendingInit(): void {
-  let threw: unknown = null;
-  try {
-    SV_InitGameProgs();
-  } catch (e) {
-    threw = e;
-  }
-  expect(threw).toBeInstanceOf(PendingPort);
+  expect(() => SV_InitGameProgs()).not.toThrow();
 }
 
 describe("SV_InitGameProgs", () => {

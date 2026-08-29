@@ -2,7 +2,6 @@
 
 import { VectorCopy } from "../shared/math";
 import { Com_sprintf, type CvarT, DF_SAME_LEVEL, PRINT_HIGH, Q_stricmp, type UsercmdT } from "../shared/q_shared";
-import { PendingPort } from "../qcommon/pending";
 import { AI_SetSightClient } from "./g_ai";
 import { ClientCommand } from "./g_cmds";
 import { type Edict, GAME_API_VERSION, type GameExports, type GameImports, SVF_MONSTER } from "./game";
@@ -28,6 +27,7 @@ import { BeginIntermission } from "./p_hud";
 import { ServerCommand } from "./g_svcmds";
 import { G_Find, G_Spawn } from "./g_utils";
 import { SpawnEntities } from "./g_spawn";
+import { InitGame, ReadGame, ReadLevel, WriteGame, WriteLevel } from "./g_save";
 
 
 
@@ -52,31 +52,6 @@ export function ShutdownGame(): void {
   // gi.FreeTags(TAG_LEVEL) / gi.FreeTags(TAG_GAME) dropped: GameImports has
   // no FreeTags member (see game.ts's TagMalloc/TagFree/FreeTags comment) --
   // there is no tag-based allocator on this side of the port.
-}
-
-// -------------------------------------------------------------------------
-// GameExports members whose owning C function has not been exported by its
-// sibling module yet. Each throws PendingPort naming the real C source
-// location; delete the placeholder here and import the real function once
-// that sibling module lands (coordinator integration, per this unit's
-// brief).
-// -------------------------------------------------------------------------
-
-// g_save.c has no src/game/g_save.ts sibling yet.
-function InitGame(): void {
-  throw new PendingPort("g_save.c:InitGame");
-}
-function WriteGame(filename: string, autosave: boolean): void {
-  throw new PendingPort("g_save.c:WriteGame");
-}
-function ReadGame(filename: string): void {
-  throw new PendingPort("g_save.c:ReadGame");
-}
-function WriteLevel(filename: string): void {
-  throw new PendingPort("g_save.c:WriteLevel");
-}
-function ReadLevel(filename: string): void {
-  throw new PendingPort("g_save.c:ReadLevel");
 }
 
 import { ClientBegin, ClientConnect, ClientDisconnect, ClientThink, ClientUserinfoChanged } from "./p_client";

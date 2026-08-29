@@ -11,7 +11,6 @@ import {
   CS_SKYAXIS,
   CS_SKYROTATE,
   CS_STATUSBAR,
-  type EntityStateT,
   MAX_QPATH,
   Q_stricmp,
 } from "../shared/q_shared";
@@ -35,11 +34,11 @@ import {
   SPAWNFLAG_NOT_EASY,
   SPAWNFLAG_NOT_HARD,
   SPAWNFLAG_NOT_MEDIUM,
-  type SpawnTempT,
   st,
 } from "./g_local";
 import { SolidT } from "./game";
-import { type EdictStringKey, G_FreeEdict, G_Spawn } from "./g_utils";
+import { FIELDS } from "./g_save";
+import { G_FreeEdict, G_Spawn } from "./g_utils";
 import { FindItem, itemlist, PrecacheItem, SetItemNames, SpawnItem } from "./g_items";
 import { InitBodyQue } from "./p_client";
 import { PlayerTrail_Init } from "./p_trail";
@@ -167,135 +166,16 @@ function cvarNum(c: { value: number } | null): number {
 }
 
 //===================================================================
-// field_t / fields[] (owned by g_save.c, not g_spawn.c -- see below)
+// field_t / fields[] (owned by g_save.c, not g_spawn.c)
 //===================================================================
 
 // g_local.h declares `field_t fields[]` as an extern read by both
 // g_spawn.c's ED_ParseField (spawn-time parsing) and g_save.c's
 // WriteEdict/ReadEdict (save-game (de)serialization); the array itself is
-// *defined* in g_save.c, not g_spawn.c. src/game/g_save.ts does not exist
-// yet (outside this worker's SCOPE), so the table is redefined here, but
-// trimmed to exactly the subset ED_ParseField can ever reach:
-//   - entries flagged FFL_NOSPAWN (goalentity, movetarget, enemy, oldenemy,
-//     activator, groundentity, teamchain, teammaster, owner, mynoise,
-//     mynoise2, target_ent, chain, and every F_FUNCTION/F_MMOVE callback
-//     field) are skipped by ED_ParseField's own `!(f->flags & FFL_NOSPAWN)`
-//     guard before the name is even compared, so omitting them here changes
-//     nothing observable: a key naming one of them still falls through to
-//     "%s is not a field", exactly as it does in the real fields[] table.
-//   - the trailing `{"item", FOFS(item), F_ITEM}` entry (no flags) is dead
-//     code for ED_ParseField specifically: the earlier
-//     `{"item", STOFS(item), F_LSTRING, FFL_SPAWNTEMP}` entry has the same
-//     name and comes first, and the C loop returns on the *first* name
-//     match, so the F_ITEM entry can never be reached by this function.
-// When g_save.ts lands, this table gets moved there and reused (per
-// PORTING.md: "g_save.c's fields[] table gets the same property-name
-// redesign"); this file's copy is deleted once that happens.
-
-type FieldTypeT = "F_INT" | "F_FLOAT" | "F_LSTRING" | "F_VECTOR" | "F_ANGLEHACK" | "F_IGNORE";
-
-// `EdictT[K] extends number` is also true for EdictT's two numeric-enum
-// fields (`movetype: MovetypeT`, `solid: SolidT`) -- TS numeric enums are
-// structurally bidirectional with `number`, so a naive mapped filter pulls
-// them in. Their presence then poisons every generic write through this
-// key type elsewhere in this file (`ent[f.prop] = n` with `f.prop:
-// EdictNumberKey` collapses to `never`, verified directly against tsc):
-// the checker must satisfy the write for whichever enum member the key
-// might statically be, and `number` isn't nominally assignable to
-// `MovetypeT`/`SolidT` there. Neither is a field this table ever targets
-// (the C fields[] table doesn't map any spawn key to them either), so they
-// are excluded explicitly.
-type EdictNumberKey = Exclude<
-  { [K in keyof EdictT]: EdictT[K] extends number ? K : never }[keyof EdictT],
-  "movetype" | "solid"
->;
-
-type EdictVectorKey = { [K in keyof EdictT]: EdictT[K] extends Vec3 ? K : never }[keyof EdictT];
-// FOFS(s.origin) / FOFS(s.angles) offset into edict_t's nested
-// entity_state_t member; there is no single "edict" | "spawntemp" target
-// that reaches a nested struct, so a third target names EntityStateT's own
-// Vec3 keys directly.
-type EntityStateVectorKey = { [K in keyof EntityStateT]: EntityStateT[K] extends Vec3 ? K : never }[keyof EntityStateT];
-
-type SpawnTempStringKey = {
-  [K in keyof SpawnTempT]: SpawnTempT[K] extends string | null ? K : never;
-}[keyof SpawnTempT];
-type SpawnTempNumberKey = { [K in keyof SpawnTempT]: SpawnTempT[K] extends number ? K : never }[keyof SpawnTempT];
-type SpawnTempVectorKey = { [K in keyof SpawnTempT]: SpawnTempT[K] extends Vec3 ? K : never }[keyof SpawnTempT];
-
-// Each variant below carries a single-literal `type` (never a union of
-// literals): TS's control-flow narrowing of `f.prop` inside a `switch
-// (f.type)` case, followed by a further `if (f.target === ...)` check,
-// only stays precise per-variant when each variant's discriminant is one
-// literal -- grouping e.g. "F_INT" | "F_FLOAT" into a single variant's
-// `type` field defeats that narrowing (verified against tsc directly).
-type FieldSpawn =
-  | { key: string; type: "F_LSTRING"; target: "edict"; prop: EdictStringKey }
-  | { key: string; type: "F_LSTRING"; target: "spawntemp"; prop: SpawnTempStringKey }
-  | { key: string; type: "F_INT"; target: "edict"; prop: EdictNumberKey }
-  | { key: string; type: "F_INT"; target: "spawntemp"; prop: SpawnTempNumberKey }
-  | { key: string; type: "F_FLOAT"; target: "edict"; prop: EdictNumberKey }
-  | { key: string; type: "F_FLOAT"; target: "spawntemp"; prop: SpawnTempNumberKey }
-  | { key: string; type: "F_VECTOR"; target: "edict"; prop: EdictVectorKey }
-  | { key: string; type: "F_VECTOR"; target: "spawntemp"; prop: SpawnTempVectorKey }
-  | { key: string; type: "F_VECTOR"; target: "edict_s"; prop: EntityStateVectorKey }
-  | { key: string; type: "F_ANGLEHACK"; target: "edict"; prop: EdictVectorKey }
-  | { key: string; type: "F_ANGLEHACK"; target: "spawntemp"; prop: SpawnTempVectorKey }
-  | { key: string; type: "F_ANGLEHACK"; target: "edict_s"; prop: EntityStateVectorKey }
-  | { key: string; type: "F_IGNORE" };
-
-const FIELDS: FieldSpawn[] = [
-  { key: "classname", type: "F_LSTRING", target: "edict", prop: "classname" },
-  { key: "model", type: "F_LSTRING", target: "edict", prop: "model" },
-  { key: "spawnflags", type: "F_INT", target: "edict", prop: "spawnflags" },
-  { key: "speed", type: "F_FLOAT", target: "edict", prop: "speed" },
-  { key: "accel", type: "F_FLOAT", target: "edict", prop: "accel" },
-  { key: "decel", type: "F_FLOAT", target: "edict", prop: "decel" },
-  { key: "target", type: "F_LSTRING", target: "edict", prop: "target" },
-  { key: "targetname", type: "F_LSTRING", target: "edict", prop: "targetname" },
-  { key: "pathtarget", type: "F_LSTRING", target: "edict", prop: "pathtarget" },
-  { key: "deathtarget", type: "F_LSTRING", target: "edict", prop: "deathtarget" },
-  { key: "killtarget", type: "F_LSTRING", target: "edict", prop: "killtarget" },
-  { key: "combattarget", type: "F_LSTRING", target: "edict", prop: "combattarget" },
-  { key: "message", type: "F_LSTRING", target: "edict", prop: "message" },
-  { key: "team", type: "F_LSTRING", target: "edict", prop: "team" },
-  { key: "wait", type: "F_FLOAT", target: "edict", prop: "wait" },
-  { key: "delay", type: "F_FLOAT", target: "edict", prop: "delay" },
-  { key: "random", type: "F_FLOAT", target: "edict", prop: "random" },
-  { key: "move_origin", type: "F_VECTOR", target: "edict", prop: "move_origin" },
-  { key: "move_angles", type: "F_VECTOR", target: "edict", prop: "move_angles" },
-  { key: "style", type: "F_INT", target: "edict", prop: "style" },
-  { key: "count", type: "F_INT", target: "edict", prop: "count" },
-  { key: "health", type: "F_INT", target: "edict", prop: "health" },
-  { key: "sounds", type: "F_INT", target: "edict", prop: "sounds" },
-  { key: "light", type: "F_IGNORE" },
-  { key: "dmg", type: "F_INT", target: "edict", prop: "dmg" },
-  { key: "mass", type: "F_INT", target: "edict", prop: "mass" },
-  { key: "volume", type: "F_FLOAT", target: "edict", prop: "volume" },
-  { key: "attenuation", type: "F_FLOAT", target: "edict", prop: "attenuation" },
-  { key: "map", type: "F_LSTRING", target: "edict", prop: "map" },
-  { key: "origin", type: "F_VECTOR", target: "edict_s", prop: "origin" },
-  { key: "angles", type: "F_VECTOR", target: "edict_s", prop: "angles" },
-  { key: "angle", type: "F_ANGLEHACK", target: "edict_s", prop: "angles" },
-
-  // temp spawn vars -- only valid when the spawn function is called
-  { key: "lip", type: "F_INT", target: "spawntemp", prop: "lip" },
-  { key: "distance", type: "F_INT", target: "spawntemp", prop: "distance" },
-  { key: "height", type: "F_INT", target: "spawntemp", prop: "height" },
-  { key: "noise", type: "F_LSTRING", target: "spawntemp", prop: "noise" },
-  { key: "pausetime", type: "F_FLOAT", target: "spawntemp", prop: "pausetime" },
-  { key: "item", type: "F_LSTRING", target: "spawntemp", prop: "item" },
-
-  { key: "gravity", type: "F_LSTRING", target: "spawntemp", prop: "gravity" },
-  { key: "sky", type: "F_LSTRING", target: "spawntemp", prop: "sky" },
-  { key: "skyrotate", type: "F_FLOAT", target: "spawntemp", prop: "skyrotate" },
-  { key: "skyaxis", type: "F_VECTOR", target: "spawntemp", prop: "skyaxis" },
-  { key: "minyaw", type: "F_FLOAT", target: "spawntemp", prop: "minyaw" },
-  { key: "maxyaw", type: "F_FLOAT", target: "spawntemp", prop: "maxyaw" },
-  { key: "minpitch", type: "F_FLOAT", target: "spawntemp", prop: "minpitch" },
-  { key: "maxpitch", type: "F_FLOAT", target: "spawntemp", prop: "maxpitch" },
-  { key: "nextmap", type: "F_LSTRING", target: "spawntemp", prop: "nextmap" },
-];
+// *defined* in g_save.c, not g_spawn.c. Per PORTING.md ("g_save.c's fields[]
+// table gets the same property-name redesign"), the table (and the
+// FieldSpawn type it's typed with) now lives in src/game/g_save.ts and is
+// imported here; ED_ParseField's behavior is unchanged.
 
 function C_atoi(value: string): number {
   const n = Number.parseInt(value, 10);
