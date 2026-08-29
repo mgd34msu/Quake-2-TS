@@ -27,6 +27,7 @@ import {
   SetGameImports,
   SetGEdicts,
 } from "../src/game/g_local";
+import { FindItem, InitItems, ITEM_INDEX } from "../src/game/g_items";
 import { PendingPort } from "../src/qcommon/pending";
 import { vec3 } from "../src/shared/math";
 import { CplaneT } from "../src/shared/q_shared";
@@ -321,14 +322,6 @@ describe("T_Damage", () => {
 });
 
 describe("CheckArmor", () => {
-  // g_items.ts's ArmorIndex/GetItemByIndex/FindItem/ITEM_INDEX are all
-  // PendingPort stubs (g_items.c is not ported yet), so a fabricated client
-  // with a real jacket-armor inventory entry cannot be driven through
-  // CheckArmor's protection-fraction math from this unit -- that call chain
-  // throws PendingPort the moment ArmorIndex() runs. Only the guard clauses
-  // that return before touching g_items.ts are testable here; the
-  // consumption-per-protection-fraction path is a reported blocker (see
-  // report).
   test("damage of 0 returns 0 without touching ArmorIndex", () => {
     setupWorld();
     const ent = g_edicts[8];
@@ -354,12 +347,17 @@ describe("CheckArmor", () => {
     expect(CheckArmor(ent, vec3(), vec3(), 10, 0, 0x00000002)).toBe(0);
   });
 
-  test("a real armor lookup is blocked by g_items.ts's PendingPort stub (ArmorIndex)", () => {
+  test("jacket armor absorbs ceil(damage * .30) and consumes inventory", () => {
     setupWorld();
     const ent = g_edicts[8];
     ent.client = new GClientT();
+    InitItems();
+    const jacket = FindItem("Jacket Armor");
+    if (jacket === null) throw new Error("Jacket Armor missing from itemlist");
+    ent.client.pers.inventory[ITEM_INDEX(jacket)] = 25;
 
-    expect(() => CheckArmor(ent, vec3(), vec3(), 10, 0, 0)).toThrow(PendingPort);
+    expect(CheckArmor(ent, vec3(), vec3(), 10, 0, 0)).toBe(3);
+    expect(ent.client.pers.inventory[ITEM_INDEX(jacket)]).toBe(22);
   });
 });
 
