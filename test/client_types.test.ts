@@ -241,10 +241,6 @@ describe("keys.ts K_* constants match client/keys.h", () => {
 
 // ---- pending-stub coverage -------------------------------------------------
 
-describe("remaining pending stubs (ref_soft track) throw PendingPort with the C source name", () => {
-  test("ref_soft r_main.ts: R_Init", async () => {
-    const { R_Init } = await import("../src/ref_soft/r_main");
-    expect(() => R_Init(null, null)).toThrow(PendingPort);
-    expect(() => R_Init(null, null)).toThrow(/R_Init/);
-  });
-});
+// The pending-stub mechanism is covered by test/ref_types.test.ts's
+// Mod_ClearAll test (a permanently bodyless C declaration, so it never
+// goes stale as real ports land).
