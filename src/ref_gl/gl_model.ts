@@ -1056,6 +1056,16 @@ function Mod_LoadBrushModel(mod: ModelT, buffer: Uint8Array): void {
 
     starmod.clear();
     Object.assign(starmod, loadmodel); // *starmod = *loadmodel; (shallow struct copy)
+    // C's `*starmod = *loadmodel` copies the embedded vec3_t arrays BY
+    // VALUE; Object.assign shares the Float32Array references, so every
+    // submodel's VectorCopy below wrote into ONE shared bounds array --
+    // all inline models (and the world) ended up with the LAST submodel's
+    // mins/maxs, and R_CullBox culled movers by the wrong box (the
+    // view-dependent vanishing-elevator bug). Re-own the vec3 fields.
+    starmod.mins = vec3(loadmodel.mins[0], loadmodel.mins[1], loadmodel.mins[2]);
+    starmod.maxs = vec3(loadmodel.maxs[0], loadmodel.maxs[1], loadmodel.maxs[2]);
+    starmod.clipmins = vec3(loadmodel.clipmins[0], loadmodel.clipmins[1], loadmodel.clipmins[2]);
+    starmod.clipmaxs = vec3(loadmodel.clipmaxs[0], loadmodel.clipmaxs[1], loadmodel.clipmaxs[2]);
 
     starmod.firstmodelsurface = bm.firstface;
     starmod.nummodelsurfaces = bm.numfaces;
@@ -1068,7 +1078,14 @@ function Mod_LoadBrushModel(mod: ModelT, buffer: Uint8Array): void {
     VectorCopy(bm.mins, starmod.mins);
     starmod.radius = bm.radius;
 
-    if (i === 0) Object.assign(loadmodel, starmod); // *loadmodel = *starmod;
+    if (i === 0) {
+      Object.assign(loadmodel, starmod); // *loadmodel = *starmod;
+      // same by-value semantics for the copy-back (see above)
+      loadmodel.mins = vec3(starmod.mins[0], starmod.mins[1], starmod.mins[2]);
+      loadmodel.maxs = vec3(starmod.maxs[0], starmod.maxs[1], starmod.maxs[2]);
+      loadmodel.clipmins = vec3(starmod.clipmins[0], starmod.clipmins[1], starmod.clipmins[2]);
+      loadmodel.clipmaxs = vec3(starmod.clipmaxs[0], starmod.clipmaxs[1], starmod.clipmaxs[2]);
+    }
 
     starmod.numleafs = bm.visleafs;
   }
