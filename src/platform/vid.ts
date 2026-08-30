@@ -47,7 +47,7 @@ import { GetRefAPI as GetRefAPI_GL, SetGLimp } from "../ref_gl/gl_rmain";
 import { SetQGL } from "../ref_gl/gl_image";
 import { loadQGLFromSystem } from "../ref_gl/qgl";
 import { CreateGLimp } from "./glimp";
-import { Cbuf_ExecuteText, Cmd_AddCommand } from "../qcommon/cmd";
+import { Cbuf_ExecuteText, Cmd_AddCommand, Cmd_RemoveCommand } from "../qcommon/cmd";
 import { Cvar_Get, Cvar_Set, Cvar_SetValue } from "../qcommon/cvar";
 import { Com_Error, Com_Printf, Com_DPrintf } from "../qcommon/common";
 import { FS_Gamedir, FS_LoadFile, FS_FreeFile } from "../qcommon/files";
@@ -169,11 +169,7 @@ function refImports(): RefImports {
   return {
     Sys_Error: VID_Error,
     Cmd_AddCommand,
-    Cmd_RemoveCommand(_name: string): void {
-      // cmd.c's Cmd_RemoveCommand is not ported (cmd.ts keeps a permanent
-      // registry); the renderer only calls it from R_Shutdown, and this
-      // build never unloads the refresh, so the commands stay registered.
-    },
+    Cmd_RemoveCommand,
     Cmd_Argc(): number {
       return cmdMod().Cmd_Argc();
     },
@@ -259,6 +255,20 @@ export function VID_LoadRefresh(name: string): boolean {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       Com_Printf("LoadLibrary(\"%s\") failed: %s\n", name, msg);
+      // vid_dll.c always runs re.Shutdown() when re.Init() fails; a throwing
+      // Init would otherwise skip it here and leave ref_gl's console commands
+      // (screenshot/modellist/imagelist/gl_strings) registered against a dead
+      // GL context -- the soft refresh's own registrations are then rejected
+      // as duplicates and "screenshot" segfaults through a null GL pointer.
+      // Shutdown removes its commands first, so even if it throws partway
+      // through the dead-context teardown the command table is clean.
+      if (re) {
+        try {
+          re.Shutdown();
+        } catch {
+          // partially-initialized refresh; commands are already removed
+        }
+      }
       VID_FreeReflib();
       return false;
     }
