@@ -38,7 +38,13 @@ let vorbisTried = false;
 function lib(): VorbisLib | null {
   if (vorbisTried) return vorbis;
   vorbisTried = true;
-  for (const name of ["libvorbisfile.so.3", "libvorbisfile.so"]) {
+  const names =
+    process.platform === "win32"
+      ? ["libvorbisfile-3.dll", "vorbisfile.dll", "libvorbisfile.dll"]
+      : process.platform === "darwin"
+        ? ["libvorbisfile.3.dylib", "libvorbisfile.dylib"]
+        : ["libvorbisfile.so.3", "libvorbisfile.so"];
+  for (const name of names) {
     try {
       vorbis = dlopen(name, vorbisSymbols);
       return vorbis;
