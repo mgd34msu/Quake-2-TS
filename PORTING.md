@@ -18,7 +18,9 @@ Every worker follows this file. It is the contract; the check gate is `bun run c
 | `linux/ win32/ solaris/ irix/` | `src/platform/` — ONE bun implementation of the sys/net/vid/snd interfaces (`sys.ts`, `net_udp.ts`, `vid.ts`, `snd.ts`). The per-OS dirs are alternative implementations of the same interface and are not transliterated. |
 | `null/*.c` | `src/null/<basename>.ts` (headless client stubs for the dedicated server) |
 | `linux/cd_linux.c`, `win32/cd_win.c` | `src/platform/cd_ogg.ts` — same six-entry `cdaudio.h` interface; the physical CD drive (ioctl/MCI redbook playback) is replaced by `music/NN.ogg` rips decoded via the system libvorbisfile (bun:ffi) into the mixer's raw-sample ring. Degrades to `src/null/cd_null.ts` behaviour when libvorbisfile is absent. |
-| `ctf/` | `src/ctf/` (last track; copies `src/game` structure) |
+| `ctf/` | `src/ctf/` (copies `src/game` structure) |
+| `xatrix/` (mission pack 1, from quake2-rerelease-dll/original) | `src/xatrix/` — shared basenames start from the `src/game` port with the C diff (xatrix/X.c vs baseq2/X.c) applied; pack-only files are fresh ports |
+| `rogue/` (mission pack 2, same source tree) | `src/rogue/` — same diff-driven strategy |
 | `ref_gl/gl_*.c` | `src/ref_gl/<basename>.ts`; the C `qgl` function-pointer table becomes the `QGL` interface in `src/ref_gl/qgl.ts`, bound to the system libGL via `bun:ffi` at runtime (`loadQGLFromSystem`, extensions via SDL's GetProcAddress), with a `QGLRecording` fake for tests. Extension entry points are `| null` exactly like the C pointers. GLimp lives in `src/platform/glimp.ts` over SDL GL contexts; `vid_ref gl` selects it at runtime. |
 
 Entry point: `src/main.ts` (Qcommon_Init + frame loop, dedicated-server configuration).
