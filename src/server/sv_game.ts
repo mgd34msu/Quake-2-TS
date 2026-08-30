@@ -47,6 +47,10 @@ import type { GameExports as CtfGameExports } from "../ctf/game";
 // by reading the same "game" cvar directly, in-process, instead of loading a
 // shared library from a mod directory.
 import { GetGameAPI as CTF_GetGameAPI } from "../ctf/g_main";
+import { GetGameAPI as XATRIX_GetGameAPI } from "../xatrix/g_main";
+import { GetGameAPI as ROGUE_GetGameAPI } from "../rogue/g_main";
+import type { GameExports as XatrixGameExports } from "../xatrix/game";
+import type { GameExports as RogueGameExports } from "../rogue/game";
 import { sv, svs, ServerStateT, maxclients } from "./server";
 import { SV_BroadcastPrintf, SV_Multicast, SV_ClientPrintf, SV_StartSound } from "./sv_send";
 import { SV_ModelIndex, SV_SoundIndex, SV_ImageIndex } from "./sv_init";
@@ -92,7 +96,13 @@ export const geHolder: { ge: GameExports | null } = { ge: null };
 // Follow-up: change `edicts: EdictT[]` to `edicts: Edict[]` in both
 // src/game/game.ts and src/ctf/game.ts (Edict is already what every
 // consumer's actual field access needs) to close this gap.
-function adaptCtfGameExports(ctfGe: CtfGameExports): GameExports {
+// the mission packs share ctf's adapter shape: their GameImports are
+// structurally identical to the base game's, their GameExports objects are
+// mutated in place by their own InitGame, and the live getters below keep
+// the bridge current. One adapter serves all three pack tracks; the union
+// parameter works because the three interfaces are structurally identical
+// in every member the adapter touches.
+function adaptPackGameExports(ctfGe: CtfGameExports | XatrixGameExports | RogueGameExports): GameExports {
   return {
     apiversion: ctfGe.apiversion,
     Init: () => ctfGe.Init(),
@@ -445,7 +455,15 @@ export function SV_InitGameProgs(): void {
   // `Edict` type as parameters, so passing it to CTF_GetGameAPI needs no
   // cast. Its GameExports return does NOT assign back structurally (see
   // adaptCtfGameExports's comment above) -- bridged through that adapter.
-  const ge = Cvar_VariableString("game") === "ctf" ? adaptCtfGameExports(CTF_GetGameAPI(importsObj)) : GetGameAPI(importsObj);
+  const gameName = Cvar_VariableString("game");
+  const ge =
+    gameName === "ctf"
+      ? adaptPackGameExports(CTF_GetGameAPI(importsObj))
+      : gameName === "xatrix"
+        ? adaptPackGameExports(XATRIX_GetGameAPI(importsObj))
+        : gameName === "rogue"
+          ? adaptPackGameExports(ROGUE_GetGameAPI(importsObj))
+          : GetGameAPI(importsObj);
 
   if (ge.apiversion !== GAME_API_VERSION) {
     Com_Error(ERR_DROP, "game is version %i, not %i", ge.apiversion, GAME_API_VERSION);
