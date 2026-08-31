@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cvar_ForceSet } from "../src/qcommon/cvar";
-import { FS_InitFilesystem, FS_LoadFile, FS_FreeFile, FS_ListFiles, FS_Gamedir, FS_SetGamedir } from "../src/qcommon/files";
+import { FS_InitFilesystem, FS_LoadFile, FS_FreeFile, FS_ListFiles, FS_Gamedir, FS_SetGamedir, FS_NextPath } from "../src/qcommon/files";
 
 const HEADER_SIZE = 12;
 const ENTRY_SIZE = 64; // 56-char name + filepos (int32) + filelen (int32)
@@ -138,5 +138,23 @@ describe("files.ts -- FS_* virtual filesystem", () => {
   test("FS_Gamedir reflects FS_SetGamedir", () => {
     FS_SetGamedir("mymod");
     expect(FS_Gamedir()).toBe(`${tmpRoot}/mymod`);
+  });
+});
+
+describe("FS_NextPath termination (pointer-identity port bug)", () => {
+  test("a full walk from null always reaches null in finitely many steps, even when fs_gamedir's text equals a searchpath filename", () => {
+    // The buggy version returned the same entry forever whenever the
+    // requested pattern matched nothing and the caller looped
+    // do { path = FS_NextPath(path) } while (...) -- bound the walk hard.
+    let p: string | null = null;
+    const seen: string[] = [];
+    for (let i = 0; i < 32; i++) {
+      p = FS_NextPath(p);
+      if (p === null) break;
+      expect(seen.includes(p)).toBe(false); // no step may repeat
+      seen.push(p);
+    }
+    expect(p).toBeNull();
+    expect(seen.length).toBeGreaterThan(0);
   });
 });

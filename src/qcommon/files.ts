@@ -830,16 +830,26 @@ distinct directory string).
 ================
 */
 export function FS_NextPath(prevpath: string | null): string | null {
-  if (prevpath === null) return fs_gamedir;
-
-  let prev = fs_gamedir;
+  // The C compares prevpath against fs_gamedir/s->filename by POINTER
+  // identity, so two paths with identical text are still distinct steps of
+  // the walk. A literal `===` on TS strings compares CONTENT -- and
+  // fs_gamedir's text always equals the game-dir searchpath's filename, so
+  // the walk returned the same entry forever and every do/while caller
+  // (FS_Dir_f with a no-match pattern, PlayerConfig_ScanDirectories on a
+  // pak-only install) spun infinitely. Rebuilding the walk as a DEDUPED
+  // ordered list makes each position unambiguous and the walk finite,
+  // preserving the C's observable sequence (same fix as the rerelease
+  // port, where it froze Player Setup outright).
+  const dirs: string[] = [fs_gamedir];
   for (let s = fs_searchpaths; s; s = s.next) {
     if (s.kind === "pack") continue;
-    if (prevpath === prev) return s.filename;
-    prev = s.filename;
+    if (!dirs.includes(s.filename)) dirs.push(s.filename);
   }
 
-  return null;
+  if (prevpath === null) return dirs[0];
+  const idx = dirs.indexOf(prevpath);
+  if (idx === -1 || idx + 1 >= dirs.length) return null;
+  return dirs[idx + 1];
 }
 
 /*
