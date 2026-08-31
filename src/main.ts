@@ -15,8 +15,10 @@
 // server never needs the library to be installed.
 //
 // Omitted from Qcommon_Init, with reasons:
-//   z_chain re-init / Cmd_AddCommand("z_stats", Z_Stats_f) -- the zone
-//     allocator is omitted from common.ts per PORTING.md's Z_Malloc rule.
+//   z_chain re-init -- the zone allocator is omitted from common.ts per
+//     PORTING.md's Z_Malloc rule (plain allocation, GC-managed; there is no
+//     z_bytes/z_count to report). "z_stats" (qcommon/common.c:1133-1139) is
+//     still registered below, as a stub that prints why -- see Z_Stats_f.
 //   Swap_Init() -- little-endian is the only path this port takes
 //     (PORTING.md's #ifdef BIG_ENDIAN rule); qcommon.ts's BigShort/LittleShort
 //     are already fixed at their little-endian meanings.
@@ -78,6 +80,15 @@ function Com_Error_f(): void {
   Com_Error(ERR_FATAL, "%s", Cmd_Argv(1));
 }
 
+// qcommon/common.c:1133-1139: Z_Stats_f prints the zone allocator's live
+// byte/block counts (z_bytes, z_count). This port has no zone allocator
+// (PORTING.md's Z_Malloc rule: plain GC-managed allocation, no z_chain to
+// walk), so there is nothing to count -- registered so "z_stats" is not an
+// unknown command, with a message explaining why instead of a byte count.
+function Z_Stats_f(): void {
+  Com_Printf("z_stats: not available -- this port has no zone allocator (plain GC-managed allocation; see PORTING.md's Z_Malloc rule)\n");
+}
+
 /*
 =================
 Qcommon_Init
@@ -120,6 +131,7 @@ export function Qcommon_Init(argv: string[]): void {
     //
     // init commands and vars
     //
+    Cmd_AddCommand("z_stats", Z_Stats_f);
     Cmd_AddCommand("error", Com_Error_f);
 
     setHostSpeeds(Cvar_Get("host_speeds", "0", 0));

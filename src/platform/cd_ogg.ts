@@ -21,7 +21,8 @@ library cannot be loaded.
 
 import { dlopen, ptr, read as ffiRead, type Library, type Pointer } from "bun:ffi";
 import { Com_DPrintf, Com_Printf } from "../qcommon/common";
-import { Cvar_Get } from "../qcommon/cvar";
+import { Cmd_AddCommand, Cmd_Argc, Cmd_Argv } from "../qcommon/cmd";
+import { Cvar_Get, Cvar_Set } from "../qcommon/cvar";
 import { FS_Gamedir } from "../qcommon/files";
 import { S_RawSamples } from "../client/snd_dma";
 import { dma, paintedtime, s_rawend } from "../client/snd_loc";
@@ -213,6 +214,67 @@ function applyCdVolume(buf: Uint8Array, byteLen: number): void {
   }
 }
 
+/*
+CD_f -- win32/cd_win.c:257-366 and linux/cd_linux.c:198-314's identical "cd"
+console command. play/loop/stop/resume/info map onto this OGG-file backend's
+real state; on/off/reset are approximated through the cd_nocd cvar (the
+mechanism CDAudio_Play/CDAudio_Update already check), which is the practical
+equivalent of the C static `enabled` flag this port has no other home for.
+remap/close/eject drive a physical CD-ROM tray or table of contents that
+does not exist here, and pause has no counterpart in the six-function
+cdaudio.h interface this file implements (see this file's header comment,
+and note CDAudio_Resume above is also a no-op for the same reason) -- all
+four print an explanation instead of silently doing nothing.
+*/
+function CD_f(): void {
+  if (Cmd_Argc() < 2) return;
+  const command = Cmd_Argv(1).toLowerCase();
+
+  if (command === "on" || command === "reset") {
+    if (command === "reset" && vf) CDAudio_Stop();
+    Cvar_Set("cd_nocd", "0");
+    return;
+  }
+  if (command === "off") {
+    if (vf) CDAudio_Stop();
+    Cvar_Set("cd_nocd", "1");
+    return;
+  }
+  if (command === "remap" || command === "close" || command === "eject" || command === "pause") {
+    Com_Printf(
+      `cd ${command}: not available -- this port has no physical CD-ROM device (win32/cd_win.c:257-366, linux/cd_linux.c:198-314)\n`,
+    );
+    return;
+  }
+  if (command === "play") {
+    CDAudio_Play(parseInt(Cmd_Argv(2), 10) || 0, false);
+    return;
+  }
+  if (command === "loop") {
+    CDAudio_Play(parseInt(Cmd_Argv(2), 10) || 0, true);
+    return;
+  }
+  if (command === "stop") {
+    CDAudio_Stop();
+    return;
+  }
+  if (command === "resume") {
+    CDAudio_Resume();
+    return;
+  }
+  if (command === "info") {
+    // win32/cd_win.c:358-364, linux/cd_linux.c:304-313 also print "%u
+    // tracks" (the disc's table of contents) and a "Paused ..." branch --
+    // this backend has no TOC (there is no disc, only whichever
+    // music/NN.ogg files happen to exist) and no paused state (see the
+    // remap/close/eject/pause branch above), so only the play/loop state
+    // that genuinely exists here is reported.
+    if (vf) Com_Printf(`Currently ${looping ? "looping" : "playing"} track ${currentTrack}\n`);
+    else Com_Printf("Not playing.\n");
+    return;
+  }
+}
+
 export function CDAudio_Init(): number {
   // linux/cd_linux.c:363-365: nocdaudio is checked before anything else, and
   // short-circuits CD audio entirely (distinct from cd_nocd, which is the
@@ -232,7 +294,13 @@ export function CDAudio_Init(): number {
   Cvar_Get("cd_loopcount", "4", 0);
   Cvar_Get("cd_looptrack", "11", 0);
 
-  return lib() ? 0 : -1; // C: 0 = ok; init failure leaves the null behaviour
+  const ok = lib() !== null;
+  // win32/cd_win.c:477, linux/cd_linux.c:398: both register "cd" only after
+  // the device open succeeds -- if there is nothing to control, the command
+  // does not exist at all in the reference engine either.
+  if (ok) Cmd_AddCommand("cd", CD_f);
+
+  return ok ? 0 : -1; // C: 0 = ok; init failure leaves the null behaviour
 }
 
 export function CDAudio_Shutdown(): void {

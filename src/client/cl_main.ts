@@ -91,7 +91,7 @@ import { CL_PredictMovement } from "./cl_pred";
 import { CL_RunDLights, CL_RunLightStyles, CL_ClearEffects } from "./cl_fx";
 import { CL_ClearTEnts } from "./cl_tent";
 import { S_StopAllSounds, S_Update, S_Init, S_Shutdown } from "./snd_dma";
-import { CL_RegisterSounds, CL_ParseClientinfo, CL_ParseServerMessage } from "./cl_parse";
+import { CL_RegisterSounds, CL_ParseClientinfo, CL_ParseServerMessage, CL_Download_f } from "./cl_parse";
 import { CL_PrepRefresh, V_Init } from "./cl_view";
 import { SCR_Init, SCR_UpdateScreen, SCR_BeginLoadingPlaque, SCR_EndLoadingPlaque, SCR_RunConsole } from "./cl_scrn";
 import { SCR_StopCinematic, SCR_RunCinematic } from "./cl_cin";
@@ -1200,12 +1200,8 @@ export function CL_InitLocal(): void {
 
   Cmd_AddCommand("precache", CL_Precache_f);
 
-  // CL_Download_f (cl_parse.ts) -- registered per client.h, but that pending
-  // stub always throws; kept out of Cmd_AddCommand here so CL_InitLocal
-  // itself doesn't fail merely for registering it (Cmd_AddCommand stores
-  // the function without calling it). Registering it is harmless either
-  // way; omitted only to keep this module's own imports minimal. Reported
-  // deviation: "download" command not wired up here.
+  // client/cl_main.c:1518
+  Cmd_AddCommand("download", CL_Download_f);
 
   //
   // forward to server commands

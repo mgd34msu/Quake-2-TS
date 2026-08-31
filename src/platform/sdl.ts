@@ -662,6 +662,14 @@ function IN_MLookUp(): void {
   if (!(freelook && freelook.value) && lookspring && lookspring.value) clInputMod().IN_CenterView();
 }
 
+// linux/rw_in_svgalib.c:113-116 / linux/rw_x11.c's identical Force_CenterView_f:
+// snaps the pitch angle back to level. Unlike +mlook/-mlook this has no
+// hardware dependency (it is a plain viewangles write), so it is ported for
+// real rather than stubbed, on both platforms' behalf.
+function IN_ForceCenterView_f(): void {
+  cl.viewangles[PITCH] = 0;
+}
+
 // win32/in_win.c:352-371's DirectInput joystick cvars and win32/in_win.c:497's
 // in_initjoy gate have no consumer here -- this backend does not implement
 // joystick input (see IN_Init's comment). Registered only, so `set
@@ -688,6 +696,17 @@ function IN_RegisterUnportedJoystickCvars(): void {
   Cvar_Get("joy_pitchsensitivity", "1", 0);
   Cvar_Get("joy_yawsensitivity", "-1", 0);
   Cvar_Get("in_initjoy", "1", CVAR_NOSET);
+
+  // win32/in_win.c:380: Joy_AdvancedUpdate_f re-reads the joy_advanced*
+  // cvars into the DirectInput axis-mapping tables it drives IN_JoyMove
+  // from. There is no joystick backend here to hold those tables (see this
+  // function's own header comment), so the command is registered only, with
+  // a message instead of silently doing nothing.
+  Cmd_AddCommand("joy_advancedupdate", Joy_AdvancedUpdate_f);
+}
+
+function Joy_AdvancedUpdate_f(): void {
+  Com_Printf("joy_advancedupdate: not available -- this port has no joystick backend (win32/in_win.c:380)\n");
 }
 
 export function IN_Init(): void {
@@ -727,6 +746,8 @@ export function IN_Init(): void {
 
   Cmd_AddCommand("+mlook", IN_MLookDown);
   Cmd_AddCommand("-mlook", IN_MLookUp);
+  // linux/rw_in_svgalib.c:249, linux/rw_x11.c:151
+  Cmd_AddCommand("force_centerview", IN_ForceCenterView_f);
 
   const l = lib();
   mouse_avail = mouseStartupAllowed && l !== null && initSubsystem(l, SDL_INIT_VIDEO);
