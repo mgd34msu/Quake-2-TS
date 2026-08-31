@@ -75,6 +75,12 @@ function makeFakeRi(overrides: Partial<RefImports> = {}): RefImports {
 
 const EXTENSION_SYMBOL_NAMES = ["glLockArraysEXT", "glUnlockArraysEXT", "glPointParameterfEXT", "glPointParameterfvEXT", "glColorTableEXT", "glMTexCoord2fSGIS", "glSelectTextureSGIS"];
 
+// v1.2.0 vid_scale (resolution-scaling render target, src/platform/glimp.ts):
+// qgl.ts's resolveGLFramebufferAPI resolves this ARB_framebuffer_object
+// group as one all-or-nothing unit, unlike the seven independent resolvers
+// above.
+const FRAMEBUFFER_SYMBOL_NAMES = ["glGenFramebuffers", "glBindFramebuffer", "glFramebufferTexture2D", "glCheckFramebufferStatus", "glBlitFramebuffer", "glDeleteFramebuffers"];
+
 describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () => {
   test("queries every *_EXT/*_SGIS name through the resolver and falls back to a no-op when it comes back empty", () => {
     const queried: string[] = [];
@@ -85,7 +91,13 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
 
     const qgl: QGL = loadQGLFromSystem(fakeGetProcAddress);
 
-    expect(queried.slice().sort()).toEqual(EXTENSION_SYMBOL_NAMES.slice().sort());
+    // resolveGLFramebufferAPI queries its group in a fixed order and bails
+    // on the first null (an all-or-nothing group gains nothing from probing
+    // the rest once one member is known absent) -- unlike the seven
+    // independent *_EXT/*_SGIS resolvers, each of which always queries
+    // regardless of the others' results, so only "glGenFramebuffers" (first
+    // in the group) appears here, not all six.
+    expect(queried.slice().sort()).toEqual([...EXTENSION_SYMBOL_NAMES, "glGenFramebuffers"].sort());
 
     // unresolved extensions are null, exactly the C's NULL function
     // pointers -- every engine call site checks before calling, and the
@@ -97,6 +109,14 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
     expect(qgl.qglPointParameterfEXT).toBeNull();
     expect(qgl.qglPointParameterfvEXT).toBeNull();
     expect(qgl.qglColorTableEXT).toBeNull();
+
+    // same all-or-nothing contract for the ARB_framebuffer_object group
+    // (see qgl.ts's resolveGLFramebufferAPI header comment): a context
+    // missing even one member means src/platform/glimp.ts's vid_scale
+    // support falls back to unscaled rendering.
+    expect(qgl.qglGenFramebuffers).toBeNull();
+    expect(qgl.qglBindFramebuffer).toBeNull();
+    expect(qgl.qglBlitFramebuffer).toBeNull();
   });
 
   test("a resolver that finds every extension is queried by name but its no-op fallback is never used", () => {
@@ -112,7 +132,7 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
     };
 
     expect(() => loadQGLFromSystem(fakeGetProcAddress)).not.toThrow();
-    expect(resolved).toEqual(new Set(EXTENSION_SYMBOL_NAMES));
+    expect(resolved).toEqual(new Set([...EXTENSION_SYMBOL_NAMES, ...FRAMEBUFFER_SYMBOL_NAMES]));
   });
 
   test("with no resolver at all (gl_rmain.ts's own zero-arg call site), every QGL member still exists", () => {
@@ -127,7 +147,7 @@ describe("src/ref_gl/qgl.ts -- loadQGLFromSystem's getProcAddress wiring", () =>
     for (const name of core) {
       expect(typeof qgl[name]).toBe("function");
     }
-    const extensions: ReadonlyArray<keyof QGL> = ["qglLockArraysEXT", "qglUnlockArraysEXT", "qglPointParameterfEXT", "qglPointParameterfvEXT", "qglColorTableEXT", "qglMTexCoord2fSGIS", "qglSelectTextureSGIS"];
+    const extensions: ReadonlyArray<keyof QGL> = ["qglLockArraysEXT", "qglUnlockArraysEXT", "qglPointParameterfEXT", "qglPointParameterfvEXT", "qglColorTableEXT", "qglMTexCoord2fSGIS", "qglSelectTextureSGIS", "qglGenFramebuffers", "qglBlitFramebuffer"];
     for (const name of extensions) {
       const member = qgl[name];
       expect(member === null || typeof member === "function").toBe(true);
