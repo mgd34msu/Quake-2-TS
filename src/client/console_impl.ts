@@ -39,7 +39,7 @@ import { Cvar_Get, Cvar_Set, Cvar_VariableValue } from "../qcommon/cvar";
 import { Cmd_AddCommand, Cmd_Argc, Cmd_Argv, Cbuf_AddText } from "../qcommon/cmd";
 import { SetConPrintHandler, Com_Printf, Com_ServerState } from "../qcommon/common";
 import { Com_sprintf, type CvarT } from "../shared/q_shared";
-import { VERSION } from "../qcommon/qcommon";
+import { APP_VERSION_STRING } from "../qcommon/qcommon";
 import { FS_Gamedir, FS_CreatePath, FS_FOpenFileWrite, FS_Write, FS_FCloseFile } from "../qcommon/files";
 import { SCR_EndLoadingPlaque, SCR_AddDirtyPoint } from "./cl_scrn";
 import { M_ForceMenuOff } from "./menu";
@@ -514,8 +514,11 @@ export function Con_DrawConsole(frac: number): void {
   SCR_AddDirtyPoint(0, 0);
   SCR_AddDirtyPoint(viddef.width - 1, lines - 1);
 
-  const version = Com_sprintf("v%4.2f", VERSION);
-  for (let x = 0; x < 5; x++) re.DrawChar(viddef.width - 44 + x * 8, lines - 12, 128 + version.charCodeAt(x));
+  // Branded port identity instead of the C's "v%4.2f" VERSION -- same
+  // right-justified slot and green-charset (+128) convention, generalized
+  // from the C's fixed 5-glyph loop/x offset to the string's real length.
+  const version = APP_VERSION_STRING;
+  for (let x = 0; x < version.length; x++) re.DrawChar(viddef.width - (version.length - x) * 8 - 4, lines - 12, 128 + version.charCodeAt(x));
 
   // draw the text
   con.vislines = lines;
