@@ -20,7 +20,7 @@
 // platform mapping they live in src/platform/sdl.ts and are re-exported
 // here under the names client.h declares.
 
-import { Cmd_Argv, Cmd_AddCommand } from "../qcommon/cmd";
+import { Cmd_Argv, Cmd_AddCommand, Cbuf_AddText } from "../qcommon/cmd";
 import { Cvar_Get, Cvar_Userinfo, userinfo_modified, SetUserinfoModified } from "../qcommon/cvar";
 import { Com_Printf, COM_BlockSequenceCRCByte } from "../qcommon/common";
 import { Netchan_Transmit } from "../qcommon/net_chan";
@@ -34,6 +34,7 @@ import { cl, cls, ConnstateT, KeydestT, KbuttonT, clCvars, in_klook, in_strafe, 
 import { anykeydown } from "./keys";
 import { CL_FixUpGender } from "./cl_main";
 import { SCR_FinishCinematic } from "./cl_cin";
+import { CL_Wheel_Open, CL_Wheel_Close, CL_Wheel_ClearInput } from "./wheel";
 
 /*
 ===============================================================================
@@ -79,6 +80,12 @@ export const in_use = new KbuttonT();
 export const in_attack = new KbuttonT();
 export const in_up = new KbuttonT();
 export const in_down = new KbuttonT();
+
+// input.c:245 `static kbutton_t in_holster;` -- one of the "Kex stuff"
+// registrations at input.c:736-744. Tracked as a plain kbutton_t for
+// parity/testability only: this port has no BUTTON_HOLSTER usercmd bit to
+// fold it into (see wheel.ts's file banner for why that's cut).
+export const in_holster = new KbuttonT();
 
 let in_impulse = 0;
 
@@ -236,6 +243,51 @@ function IN_UseUp(): void {
 
 function IN_Impulse(): void {
   in_impulse = atoi(Cmd_Argv(1));
+}
+
+// input.c:431-436,438-456 "Kex stuff" -- KEX default bindings put these six
+// commands on the mouse wheel and a modifier key. This port previously
+// registered none of them, so the KEX bindings.cfg's `+wheel`/`-wheel` hit
+// "Unknown command" and `cl_weapnext`/`cl_weapprev` fell through to
+// Cmd_ForwardToServer, landing on the game module's ClientCommand as chat
+// text ("cl_weapnext") -- flood-locking the player on every scroll tick.
+function IN_HolsterDown(): void {
+  KeyDown(in_holster);
+}
+function IN_HolsterUp(): void {
+  KeyUp(in_holster);
+}
+function IN_WheelDown(): void {
+  CL_Wheel_Open(false);
+}
+function IN_WheelUp(): void {
+  CL_Wheel_Close(true);
+}
+function IN_Wheel2Down(): void {
+  CL_Wheel_Open(true);
+}
+function IN_Wheel2Up(): void {
+  CL_Wheel_Close(true);
+}
+
+// input.c:438-456 IN_WeapNext/IN_WeapPrev. q2repro drives these through
+// CL_Wheel_WeapNext/CL_Wheel_WeapPrev (CL_Wheel_Cycle) only when
+// `cl.game_api == Q2PROTO_GAME_RERELEASE`; otherwise it takes the same
+// fallback this port always takes (there is no rerelease game_api here at
+// all, see wheel.ts's file banner): queue the plain "weapnext"/"weapprev"
+// command, which this port's CL_InitLocal already registers with a null
+// handler (cl_main.ts:1231-1232) so it forwards to the server -- exactly
+// the command src/game/g_cmds.ts's ClientCommand (and its mission-pack
+// siblings) already cycle weapons correctly for. Deliberately not wired to
+// wheel.ts's CL_Wheel_Cycle: that would mean predicting a weapon switch
+// from this client's inventory list, which can't tell weapons apart from
+// ammo/armor/keys (see wheel.ts banner) -- the server's own cycling is
+// authoritative and already correct.
+function IN_WeapNext(): void {
+  Cbuf_AddText("weapnext\n");
+}
+function IN_WeapPrev(): void {
+  Cbuf_AddText("weapprev\n");
 }
 
 /*
@@ -483,6 +535,17 @@ export function CL_InitInput(): void {
   Cmd_AddCommand("+klook", IN_KLookDown);
   Cmd_AddCommand("-klook", IN_KLookUp);
 
+  // input.c:736-744 "Kex stuff" -- see IN_HolsterDown/IN_WheelDown/
+  // IN_WeapNext's banners above for what's ported vs. substituted.
+  Cmd_AddCommand("+holster", IN_HolsterDown);
+  Cmd_AddCommand("-holster", IN_HolsterUp);
+  Cmd_AddCommand("+wheel", IN_WheelDown);
+  Cmd_AddCommand("-wheel", IN_WheelUp);
+  Cmd_AddCommand("+wheel2", IN_Wheel2Down);
+  Cmd_AddCommand("-wheel2", IN_Wheel2Up);
+  Cmd_AddCommand("cl_weapnext", IN_WeapNext);
+  Cmd_AddCommand("cl_weapprev", IN_WeapPrev);
+
   cl_nodelta = Cvar_Get("cl_nodelta", "0", 0);
 }
 
@@ -569,4 +632,10 @@ export function CL_SendCmd(): void {
   // deliver the message
   //
   Netchan_Transmit(cls.netchan, buf.cursize, buf.data);
+
+  // input.c:1278-1279 CL_Carousel_ClearInput()/CL_Wheel_ClearInput(), called
+  // once per sent usercmd. The carousel half is cut (wheel.ts's file
+  // banner); CL_Wheel_ClearInput finishes the CLOSING -> CLOSED transition
+  // one tick after -wheel/-wheel2 release.
+  CL_Wheel_ClearInput();
 }
