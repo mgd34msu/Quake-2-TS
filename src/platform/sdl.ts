@@ -30,7 +30,7 @@ import { Cvar_Get, Cvar_VariableValue } from "../qcommon/cvar";
 import { Cmd_AddCommand } from "../qcommon/cmd";
 import { Com_DPrintf, Com_Printf } from "../qcommon/common";
 import type { CvarT, UsercmdT } from "../shared/q_shared";
-import { CVAR_ARCHIVE, PITCH, YAW } from "../shared/q_shared";
+import { CVAR_ARCHIVE, CVAR_NOSET, PITCH, YAW } from "../shared/q_shared";
 import { cl, cls, in_strafe, KeydestT } from "../client/client";
 import {
   K_BACKSPACE,
@@ -86,6 +86,7 @@ import {
 } from "../client/keys";
 import type * as KeysImplModule from "../client/keys_impl";
 import type * as ClInputModule from "../client/cl_input";
+import type * as WheelModule from "../client/wheel";
 import type * as CommonModule from "../qcommon/common";
 
 // keys_impl.ts (Key_Event) and cl_input.ts (IN_CenterView) both sit above
@@ -100,6 +101,9 @@ function keysMod(): typeof KeysImplModule {
 }
 function clInputMod(): typeof ClInputModule {
   return require("../client/cl_input");
+}
+function wheelMod(): typeof WheelModule {
+  return require("../client/wheel");
 }
 function commonMod(): typeof CommonModule {
   return require("../qcommon/common");
@@ -658,6 +662,34 @@ function IN_MLookUp(): void {
   if (!(freelook && freelook.value) && lookspring && lookspring.value) clInputMod().IN_CenterView();
 }
 
+// win32/in_win.c:352-371's DirectInput joystick cvars and win32/in_win.c:497's
+// in_initjoy gate have no consumer here -- this backend does not implement
+// joystick input (see IN_Init's comment). Registered only, so `set
+// in_joystick ...`/`set joy_advanced ...`/etc. do not fail as unknown
+// commands.
+function IN_RegisterUnportedJoystickCvars(): void {
+  Cvar_Get("in_joystick", "0", CVAR_ARCHIVE);
+  Cvar_Get("joy_name", "joystick", 0);
+  Cvar_Get("joy_advanced", "0", 0);
+  Cvar_Get("joy_advaxisx", "0", 0);
+  Cvar_Get("joy_advaxisy", "0", 0);
+  Cvar_Get("joy_advaxisz", "0", 0);
+  Cvar_Get("joy_advaxisr", "0", 0);
+  Cvar_Get("joy_advaxisu", "0", 0);
+  Cvar_Get("joy_advaxisv", "0", 0);
+  Cvar_Get("joy_forwardthreshold", "0.15", 0);
+  Cvar_Get("joy_sidethreshold", "0.15", 0);
+  Cvar_Get("joy_upthreshold", "0.15", 0);
+  Cvar_Get("joy_pitchthreshold", "0.15", 0);
+  Cvar_Get("joy_yawthreshold", "0.15", 0);
+  Cvar_Get("joy_forwardsensitivity", "-1", 0);
+  Cvar_Get("joy_sidesensitivity", "-1", 0);
+  Cvar_Get("joy_upsensitivity", "-1", 0);
+  Cvar_Get("joy_pitchsensitivity", "1", 0);
+  Cvar_Get("joy_yawsensitivity", "-1", 0);
+  Cvar_Get("in_initjoy", "1", CVAR_NOSET);
+}
+
 export function IN_Init(): void {
   // in_win.c's IN_StartupMouse registrations, minus the joystick ones
   // (no joystick support in this backend).
@@ -672,11 +704,32 @@ export function IN_Init(): void {
   m_forward = Cvar_Get("m_forward", "1", 0);
   m_side = Cvar_Get("m_side", "0.8", 0);
 
+  // linux/rw_in_svgalib.c:255-256's svgalib mouse-device path/sample rate:
+  // that whole console-framebuffer input backend is not ported here (SDL
+  // replaces it), so these have no consumer. Registered only.
+  Cvar_Get("mdev", "/dev/mouse", 0);
+  Cvar_Get("mrate", "1200", 0);
+
+  // win32/in_win.c:337-338's view-centering cvars: declared and registered
+  // there but never read by any function in the audited C sources (not even
+  // in win32/in_win.c itself) -- vestigial in the reference engine, not just
+  // unported here. Registered only, so they don't fail as unknown commands.
+  Cvar_Get("v_centermove", "0.15", 0);
+  Cvar_Get("v_centerspeed", "500", 0);
+
+  IN_RegisterUnportedJoystickCvars();
+
+  // win32/in_win.c:226-229's IN_StartupMouse gate: if in_initmouse is
+  // cleared, mouse startup is skipped outright (IN_StartupMouse returns
+  // before mouseinitialized is ever set).
+  const in_initmouse = Cvar_Get("in_initmouse", "1", CVAR_NOSET);
+  const mouseStartupAllowed = !!in_initmouse && in_initmouse.value !== 0;
+
   Cmd_AddCommand("+mlook", IN_MLookDown);
   Cmd_AddCommand("-mlook", IN_MLookUp);
 
   const l = lib();
-  mouse_avail = l !== null && initSubsystem(l, SDL_INIT_VIDEO);
+  mouse_avail = mouseStartupAllowed && l !== null && initSubsystem(l, SDL_INIT_VIDEO);
   mx = 0;
   my = 0;
   old_mouse_x = 0;
@@ -738,6 +791,15 @@ export function IN_Move(cmd: UsercmdT): void {
   if (!l || !mouse_active) return;
 
   l.symbols.SDL_GetRelativeMouseState(relX, relY);
+
+  // wheel.c:521-524 "always send input to wheel even if we didn't move" --
+  // tap the raw per-event SDL delta before it's accumulated/filtered/scaled
+  // below, the same point q2repro's CL_MouseMove reads dx/dy from.
+  const wheelState = wheelMod();
+  if (wheelState.wheel.state === wheelState.WheelStateT.OPEN) {
+    wheelState.CL_Wheel_Input(relX[0], relY[0]);
+  }
+
   mx += relX[0];
   my += relY[0];
 
@@ -761,11 +823,18 @@ export function IN_Move(cmd: UsercmdT): void {
   mouse_y *= sens;
 
   // add mouse X/Y movement to cmd
+  //
+  // wheel.c:544-556 gates both turning branches (but not sidemove/
+  // forwardmove) on `cl.wheel.state != WHEEL_OPEN` so mousing around the
+  // wheel doesn't also spin the view; ported onto this file's existing
+  // (pre-KEX) branch structure as an added `else if`/inner `if`.
+  const wheelOpen = wheelMod().wheel.state === wheelMod().WheelStateT.OPEN;
   if (in_strafe.state & 1 || (lookstrafe && lookstrafe.value && mlooking)) cmd.sidemove += (m_side ? m_side.value : 0) * mouse_x;
-  else cl.viewangles[YAW] -= (m_yaw ? m_yaw.value : 0) * mouse_x;
+  else if (!wheelOpen) cl.viewangles[YAW] -= (m_yaw ? m_yaw.value : 0) * mouse_x;
 
-  if ((mlooking || (freelook && freelook.value)) && !(in_strafe.state & 1)) cl.viewangles[PITCH] += (m_pitch ? m_pitch.value : 0) * mouse_y;
-  else cmd.forwardmove -= (m_forward ? m_forward.value : 0) * mouse_y;
+  if ((mlooking || (freelook && freelook.value)) && !(in_strafe.state & 1)) {
+    if (!wheelOpen) cl.viewangles[PITCH] += (m_pitch ? m_pitch.value : 0) * mouse_y;
+  } else cmd.forwardmove -= (m_forward ? m_forward.value : 0) * mouse_y;
 }
 
 // in_win.c's IN_Commands only reads the joystick, which this backend does

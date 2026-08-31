@@ -7,7 +7,12 @@ CD-less Quake 2 installs), decoded via the system libvorbisfile through
 bun:ffi and streamed into the engine mixer's raw-sample ring -- the same
 path cinematic soundtracks take, so music mixes with game audio and obeys
 the engine's pacing. cd_nocd (the cvar the options menu's "CD music"
-toggle drives) disables it, matching the C.
+toggle drives) disables it, matching the C, as does nocdaudio (the earlier,
+coarser "don't even try" switch CDAudio_Init checks first). cd_volume scales
+the decoded samples in place -- the software-gain stand-in for the C
+backend's CDROMVOLCTRL ioctl. cd_dev/cd_loopcount/cd_looptrack are
+registered only (see CDAudio_Init): they name a physical device path and an
+MCI loop-track scheme this file-based backend has no use for.
 
 src/null/cd_null.ts remains the silent backend for builds/hosts without
 libvorbisfile: this module degrades to exactly cd_null behaviour when the
@@ -20,7 +25,7 @@ import { Cvar_Get } from "../qcommon/cvar";
 import { FS_Gamedir } from "../qcommon/files";
 import { S_RawSamples } from "../client/snd_dma";
 import { dma, paintedtime, s_rawend } from "../client/snd_loc";
-import type { CvarT } from "../shared/q_shared";
+import { CVAR_ARCHIVE, CVAR_NOSET, type CvarT } from "../shared/q_shared";
 
 const vorbisSymbols = {
   ov_fopen: { args: ["cstring", "ptr"], returns: "i32" },
@@ -68,6 +73,8 @@ function cstr(s: string): Uint8Array {
 }
 
 let cd_nocd: CvarT | null = null;
+let nocdaudio: CvarT | null = null;
+let cd_volume: CvarT | null = null;
 
 let vf: Uint8Array | null = null; // live OggVorbis_File storage
 let trackRate = 0;
@@ -94,7 +101,7 @@ function closeTrack(): void {
 export function CDAudio_Play(track: number, loop: boolean): void {
   const l = lib();
   if (!l) return;
-  if (!cd_nocd) cd_nocd = Cvar_Get("cd_nocd", "0", 0);
+  if (!cd_nocd) cd_nocd = Cvar_Get("cd_nocd", "0", CVAR_ARCHIVE);
   if (cd_nocd && cd_nocd.value) return;
 
   if (currentTrack === track && vf) {
@@ -171,6 +178,7 @@ export function CDAudio_Update(): void {
     const n = Number(l.symbols.ov_read(ptr(vf), ptr(decodeBuf), decodeBuf.length, 0, 2, 1, ptr(bitstream)));
     if (n > 0) {
       const frames = (n / (2 * trackChannels)) | 0;
+      applyCdVolume(decodeBuf, n);
       S_RawSamples(frames, trackRate, 2, trackChannels, decodeBuf.subarray(0, n));
       continue;
     }
@@ -188,8 +196,42 @@ export function CDAudio_Update(): void {
   }
 }
 
+// linux/cd_linux.c:352-355's decoded 16-bit PCM samples are scaled in place
+// by cd_volume before reaching the mixer -- the software-gain equivalent of
+// the C backend's CDROMVOLCTRL ioctl (there is no hardware volume knob to
+// point at here).
+function applyCdVolume(buf: Uint8Array, byteLen: number): void {
+  if (!cd_volume) return;
+  const vol = cd_volume.value;
+  if (vol === 1) return;
+  const samples = new Int16Array(buf.buffer, buf.byteOffset, byteLen >> 1);
+  for (let i = 0; i < samples.length; i++) {
+    let s = samples[i]! * vol;
+    if (s > 32767) s = 32767;
+    else if (s < -32768) s = -32768;
+    samples[i] = s;
+  }
+}
+
 export function CDAudio_Init(): number {
-  cd_nocd = Cvar_Get("cd_nocd", "0", 0);
+  // linux/cd_linux.c:363-365: nocdaudio is checked before anything else, and
+  // short-circuits CD audio entirely (distinct from cd_nocd, which is the
+  // options-menu toggle checked per-play/per-update below).
+  nocdaudio = Cvar_Get("nocdaudio", "0", CVAR_NOSET);
+  if (nocdaudio && nocdaudio.value) return -1;
+
+  cd_nocd = Cvar_Get("cd_nocd", "0", CVAR_ARCHIVE);
+  cd_volume = Cvar_Get("cd_volume", "1", CVAR_ARCHIVE);
+
+  // linux/cd_linux.c:373's device path and win32/cd_win.c:443-444's MCI loop
+  // controls have no counterpart here -- there is no physical CD/MCI device
+  // to point at or loop against, only `music/NN.ogg` files. Registered (not
+  // consumed) so `set cd_dev ...`/`set cd_loopcount ...`/`set cd_looptrack
+  // ...` do not fail as unknown commands.
+  Cvar_Get("cd_dev", "/dev/cdrom", CVAR_ARCHIVE);
+  Cvar_Get("cd_loopcount", "4", 0);
+  Cvar_Get("cd_looptrack", "11", 0);
+
   return lib() ? 0 : -1; // C: 0 = ok; init failure leaves the null behaviour
 }
 

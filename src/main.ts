@@ -64,7 +64,7 @@ import { FS_InitFilesystem } from "./qcommon/files";
 import { c_pointcontents, c_traces, resetTraceCounters } from "./qcommon/cmodel";
 import { Netchan_Init } from "./qcommon/net_chan";
 import { NET_Init } from "./platform/net_udp";
-import { Sys_ConsoleInput, Sys_Error, Sys_Milliseconds } from "./platform/sys";
+import { Sys_ConsoleInput, Sys_Error, Sys_Milliseconds, setNostdout } from "./platform/sys";
 import { SV_Frame, SV_Init, SV_Shutdown } from "./server/sv_main";
 import { CL_Drop, CL_Frame, CL_Init, CL_Shutdown, Cmd_ForwardToServer } from "./client/cl_main";
 import { SCR_BeginLoadingPlaque } from "./client/cl_scrn";
@@ -256,13 +256,18 @@ spin, keeping the same "at least 1 ms per frame, delta-timed" semantics while
 handing the event loop back on every iteration.
 
 Also dropped from sys_linux.c's main: the fcntl(0, FNDELAY) non-blocking
-stdin setup and the `nostdout` cvar, both of which belong to
-src/platform/sys.ts's Sys_ConsoleInput/Sys_ConsoleOutput.
+stdin setup, which belongs to src/platform/sys.ts's Sys_ConsoleInput (a
+no-op stub there already -- see its comment). `nostdout` is registered
+below, at the same point sys_linux.c's main() registers it (right after
+Qcommon_Init, before the frame loop), and consumed by
+src/platform/sys.ts's Sys_ConsoleOutput via setNostdout.
 */
 export async function main(): Promise<void> {
   // Qcommon_Init is async (socket binds, file loads); entering the frame
   // loop before it settles races half-initialized subsystems.
   await Qcommon_Init(process.argv.slice(1));
+
+  setNostdout(Cvar_Get("nostdout", "0", 0));
 
   let oldtime = Sys_Milliseconds();
   for (;;) {

@@ -4,12 +4,21 @@
 // sys_*.c (Sys_Init, Sys_GetGameAPI, ...) has no bun equivalent -- see
 // src/main.ts's Qcommon_Init banner for the list.
 
-import { Com_sprintf } from "../shared/q_shared";
+import { Com_sprintf, type CvarT } from "../shared/q_shared";
 import type * as SdlModule from "./sdl";
 
 export const curtime = { value: 0 };
 
 let startTime: number | null = null;
+
+// linux/sys_linux.c:283-286's nostdout, registered by main() right after
+// Qcommon_Init and consumed by Sys_ConsoleOutput below. Set from src/main.ts
+// (not registered here) to keep this module out of cvar.ts's import graph --
+// see sdlMod()'s comment further down for why that cycle matters.
+let nostdout: CvarT | null = null;
+export function setNostdout(v: CvarT | null): void {
+  nostdout = v;
+}
 
 // monotonic clock, integer ms since first call
 export function Sys_Milliseconds(): number {
@@ -22,6 +31,7 @@ export function Sys_Milliseconds(): number {
 }
 
 export function Sys_ConsoleOutput(text: string): void {
+  if (nostdout && nostdout.value) return;
   process.stdout.write(text);
 }
 

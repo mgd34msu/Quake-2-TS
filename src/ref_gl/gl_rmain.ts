@@ -879,7 +879,10 @@ export function R_RenderFrame(fd: RefdefT): void {
   R_SetGL2D();
 }
 
-function R_Register(): void {
+// Exported (unlike most of this file's R_-prefixed internals) so tests can
+// register this module's cvars without standing up a full GL context via
+// R_Init -- ref_soft/r_main.ts's R_Register is exported for the same reason.
+export function R_Register(): void {
   glCvars.r_lefthand = ri.Cvar_Get("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
   glCvars.r_norefresh = ri.Cvar_Get("r_norefresh", "0", 0);
   glCvars.r_fullbright = ri.Cvar_Get("r_fullbright", "0", 0);

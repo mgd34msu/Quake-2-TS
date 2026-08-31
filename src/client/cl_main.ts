@@ -742,8 +742,10 @@ export async function CL_PingServers_f(): Promise<void> {
     Netchan_OutOfBandPrint(NetsrcT.NS_CLIENT, adr, `info ${PROTOCOL_VERSION}`);
   }
 
-  // noipx / NA_BROADCAST_IPX dropped -- IPX is not a supported transport on
-  // this port (net_udp.ts's banner)
+  // NA_BROADCAST_IPX itself is dropped -- IPX is not a supported transport
+  // on this port (net_udp.ts's banner) -- but noipx is still registered so
+  // `set noipx ...` does not fail as an unknown command.
+  Cvar_Get("noipx", "0", CVAR_NOSET);
 
   // send a packet to each address book entry
   for (let i = 0; i < 16; i++) {

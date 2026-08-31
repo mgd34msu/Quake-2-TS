@@ -35,7 +35,8 @@
 // single C original to be bug-for-bug faithful to (PORTING.md: the per-OS
 // dirs are "not transliterated"), so the bug is not reproduced.
 
-import { Cvar_VariableValue } from "../qcommon/cvar";
+import { Cvar_Get, Cvar_VariableValue } from "../qcommon/cvar";
+import { CVAR_ARCHIVE } from "../shared/q_shared";
 import { dma, paintedtime } from "../client/snd_loc";
 import { SDLSND_Active, SDLSND_Close, SDLSND_ConsumedBytes, SDLSND_Open, SDLSND_Queue } from "./sdl";
 
@@ -58,7 +59,24 @@ function pickSpeed(): number {
   return 11025;
 }
 
+// linux/snd_linux.c:41-44's OSS device/format-selection cvars and
+// win32/snd_win.c:599's DirectSound-vs-plain-waveOut switch have no consumer
+// here: SDL_OpenAudioDevice negotiates the device and format itself, and
+// dma.speed is already driven by the cross-platform `s_khz` cvar
+// (client/snd_dma.c's own cvar, registered in src/client/snd_dma.ts, not a
+// per-OS one) via pickSpeed() above. Registered only, so `set sndbits ...`/
+// `set sndspeed ...`/etc. do not fail as unknown commands.
+function registerUnusedPlatformSoundCvars(): void {
+  Cvar_Get("sndbits", "16", CVAR_ARCHIVE);
+  Cvar_Get("sndspeed", "0", CVAR_ARCHIVE);
+  Cvar_Get("sndchannels", "2", CVAR_ARCHIVE);
+  Cvar_Get("snddevice", "/dev/dsp", CVAR_ARCHIVE);
+  Cvar_Get("s_wavonly", "0", 0);
+}
+
 export function SNDDMA_Init(): boolean {
+  registerUnusedPlatformSoundCvars();
+
   submitted = 0; // fresh device, fresh queue: nothing has been handed over yet
   dma.channels = 2;
   dma.samplebits = 16;

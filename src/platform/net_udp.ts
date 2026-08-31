@@ -10,8 +10,13 @@
 // boundary; that byte-swap is an artifact of building a raw sockaddr struct by
 // hand and has no equivalent need here since Bun's udp API takes/returns plain
 // numeric ports. Dropped; see report.
+//
+// NET_OpenIP also carries win32/net_wins.c's ip_hostport/hostport/
+// ip_clientport/clientport back-compat cvar names (see its comment below);
+// ipx_hostport/ipx_clientport are registered by NET_RegisterIpxCvars with no
+// consumer, since IPX itself is unsupported here.
 
-import { NetadrT, NetadrtypeT, NetsrcT, PORT_ANY, PORT_SERVER, ERR_FATAL } from "../qcommon/qcommon";
+import { NetadrT, NetadrtypeT, NetsrcT, PORT_ANY, PORT_CLIENT, PORT_SERVER, ERR_FATAL } from "../qcommon/qcommon";
 import type { SizeBuf } from "../qcommon/sizebuf";
 import { Com_Printf, Com_Error } from "../qcommon/common";
 import { Cvar_Get } from "../qcommon/cvar";
@@ -247,18 +252,53 @@ async function NET_OpenIP(): Promise<void> {
   const port = Cvar_Get("port", Com_sprintf("%i", PORT_SERVER), CVAR_NOSET);
   const ip = Cvar_Get("ip", "localhost", CVAR_NOSET);
 
+  // win32/net_wins.c:537-545/558-562's back-compat cvar-name fallback chain
+  // for the bind ports: an explicit `ip_hostport`/`ip_clientport` wins, then
+  // the older `hostport`/`clientport` names, then the primary `port` cvar
+  // (or PORT_ANY for the client). linux/net_udp.c's NET_OpenIP has no such
+  // chain and always uses `port` outright; all five cvars are registered
+  // unconditionally here (unlike the C, which only calls Cvar_Get on the
+  // less-specific names once a more-specific one is absent) so `set hostport
+  // ...`/`set clientport ...`/etc. never fail as unknown commands regardless
+  // of which name ends up winning.
+  const ip_hostport = Cvar_Get("ip_hostport", "0", CVAR_NOSET);
+  const hostport = Cvar_Get("hostport", "0", CVAR_NOSET);
+  const ip_clientport = Cvar_Get("ip_clientport", "0", CVAR_NOSET);
+  const clientport = Cvar_Get("clientport", Com_sprintf("%i", PORT_CLIENT), CVAR_NOSET);
+
   const iface = ip ? ip.string : "localhost";
-  const bindPort = port ? Math.trunc(port.value) : PORT_SERVER;
+  const serverPort =
+    (ip_hostport && Math.trunc(ip_hostport.value)) ||
+    (hostport && Math.trunc(hostport.value)) ||
+    (port ? Math.trunc(port.value) : PORT_SERVER);
+  const clientPort = (ip_clientport && Math.trunc(ip_clientport.value)) || (clientport && Math.trunc(clientport.value)) || PORT_ANY;
 
   const tasks: Array<Promise<void>> = [];
-  if (!ip_sockets[NetsrcT.NS_SERVER]) tasks.push(NET_Socket(iface, bindPort, NetsrcT.NS_SERVER));
-  if (!ip_sockets[NetsrcT.NS_CLIENT]) tasks.push(NET_Socket(iface, PORT_ANY, NetsrcT.NS_CLIENT));
+  if (!ip_sockets[NetsrcT.NS_SERVER]) tasks.push(NET_Socket(iface, serverPort, NetsrcT.NS_SERVER));
+  if (!ip_sockets[NetsrcT.NS_CLIENT]) tasks.push(NET_Socket(iface, clientPort, NetsrcT.NS_CLIENT));
 
   await Promise.all(tasks);
 }
 
 // NET_OpenIPX -- dropped. IPX is not a supported transport on this port (no
 // modern OS exposes an IPX socket family); every IPX branch below is a no-op.
+// win32/net_wins.c:639,657's ipx_hostport/ipx_clientport are registered only
+// (never consumed -- there is no IPX transport to bind them to, matching
+// linux/net_udp.c's own empty NET_OpenIPX) so `set ipx_hostport ...`/`set
+// ipx_clientport ...` do not fail as unknown commands.
+function NET_RegisterIpxCvars(): void {
+  Cvar_Get("ipx_hostport", "0", CVAR_NOSET);
+  Cvar_Get("ipx_clientport", "0", CVAR_NOSET);
+}
+
+// win32/net_wins.c:41,767's net_shownet: declared and registered there, but
+// never read anywhere in the audited C sources (not even in win32/net_wins.c
+// itself) -- vestigial in the reference engine, not just unported here.
+// Registered only, so `set net_shownet ...` does not fail as an unknown
+// command.
+function NET_RegisterVestigialCvars(): void {
+  Cvar_Get("net_shownet", "0", 0);
+}
 
 // A single player game will only use the loopback code
 export async function NET_Config(multiplayer: boolean): Promise<void> {
@@ -274,13 +314,16 @@ export async function NET_Config(multiplayer: boolean): Promise<void> {
     return;
   }
 
+  NET_RegisterIpxCvars();
   await NET_OpenIP();
 }
 
 //=============================================================================
 
 export function NET_Init(): void {
-  // no-op, matching the original (kept for interface parity)
+  // no-op, matching the original (kept for interface parity), aside from
+  // registering the one cvar win32/net_wins.c's NET_Init itself registers.
+  NET_RegisterVestigialCvars();
 }
 
 // C's `void NET_Shutdown(void)` just calls `NET_Config(false)`; that call is
