@@ -86,7 +86,6 @@ import {
 } from "../client/keys";
 import type * as KeysImplModule from "../client/keys_impl";
 import type * as ClInputModule from "../client/cl_input";
-import type * as WheelModule from "../client/wheel";
 import type * as CommonModule from "../qcommon/common";
 
 // keys_impl.ts (Key_Event) and cl_input.ts (IN_CenterView) both sit above
@@ -101,9 +100,6 @@ function keysMod(): typeof KeysImplModule {
 }
 function clInputMod(): typeof ClInputModule {
   return require("../client/cl_input");
-}
-function wheelMod(): typeof WheelModule {
-  return require("../client/wheel");
 }
 function commonMod(): typeof CommonModule {
   return require("../qcommon/common");
@@ -813,14 +809,6 @@ export function IN_Move(cmd: UsercmdT): void {
 
   l.symbols.SDL_GetRelativeMouseState(relX, relY);
 
-  // wheel.c:521-524 "always send input to wheel even if we didn't move" --
-  // tap the raw per-event SDL delta before it's accumulated/filtered/scaled
-  // below, the same point q2repro's CL_MouseMove reads dx/dy from.
-  const wheelState = wheelMod();
-  if (wheelState.wheel.state === wheelState.WheelStateT.OPEN) {
-    wheelState.CL_Wheel_Input(relX[0], relY[0]);
-  }
-
   mx += relX[0];
   my += relY[0];
 
@@ -844,17 +832,11 @@ export function IN_Move(cmd: UsercmdT): void {
   mouse_y *= sens;
 
   // add mouse X/Y movement to cmd
-  //
-  // wheel.c:544-556 gates both turning branches (but not sidemove/
-  // forwardmove) on `cl.wheel.state != WHEEL_OPEN` so mousing around the
-  // wheel doesn't also spin the view; ported onto this file's existing
-  // (pre-KEX) branch structure as an added `else if`/inner `if`.
-  const wheelOpen = wheelMod().wheel.state === wheelMod().WheelStateT.OPEN;
   if (in_strafe.state & 1 || (lookstrafe && lookstrafe.value && mlooking)) cmd.sidemove += (m_side ? m_side.value : 0) * mouse_x;
-  else if (!wheelOpen) cl.viewangles[YAW] -= (m_yaw ? m_yaw.value : 0) * mouse_x;
+  else cl.viewangles[YAW] -= (m_yaw ? m_yaw.value : 0) * mouse_x;
 
   if ((mlooking || (freelook && freelook.value)) && !(in_strafe.state & 1)) {
-    if (!wheelOpen) cl.viewangles[PITCH] += (m_pitch ? m_pitch.value : 0) * mouse_y;
+    cl.viewangles[PITCH] += (m_pitch ? m_pitch.value : 0) * mouse_y;
   } else cmd.forwardmove -= (m_forward ? m_forward.value : 0) * mouse_y;
 }
 
