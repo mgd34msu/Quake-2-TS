@@ -6,7 +6,7 @@
 // SV_InitGameProgs builds its GameImports from the real Cvar_Get/Cvar_Set,
 // not an injectable fake.
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { CplaneT, CvarT } from "../src/shared/q_shared";
 import { vec3 } from "../src/shared/math";
 import type { GameImports as CtfGameImports, GTraceT as CtfGTraceT } from "../src/ctf/game";
@@ -152,7 +152,27 @@ describe("ctf GetGameAPI", () => {
 // ---------------------------------------------------------------------------
 
 describe("SV_InitGameProgs runtime game-track selection", () => {
-  const savedCvars = new Map(cvar_vars);
+  // rule 13/21 (regate hygiene, 2026-09-01, ported from the identical fix
+  // landed in quake-2-re-ts's own test/ctf_boot.test.ts): capturing
+  // `savedCvars` inline in the describe body means bun:test evaluates it
+  // during COLLECTION, before any file's own beforeEach/test bodies have
+  // run -- essentially at the start of the whole `bun test` process. Any
+  // cvar a DIFFERENT module registers later, during real test execution,
+  // is invisible to that too-early snapshot; this describe's own afterAll
+  // then does `cvar_vars.clear()` followed by re-inserting ONLY the
+  // snapshotted entries, permanently dropping any cvar registered after
+  // collection but before this suite ran -- orphaning any OTHER module's
+  // already-cached CvarT reference to it (the exact bug class test/support/
+  // cvar_snapshot.ts's own header comment warns about). Moving the
+  // snapshot into beforeAll (real execution time for this describe) fixes
+  // it: object identity is preserved either way (this is a copy of the MAP,
+  // not the CvarT values inside it), so restoring the SAME references is
+  // correct and sufficient once the snapshot is taken at the right time.
+  let savedCvars: Map<string, CvarT>;
+
+  beforeAll(() => {
+    savedCvars = new Map(cvar_vars);
+  });
 
   beforeEach(() => {
     cvar_vars.clear();

@@ -106,6 +106,12 @@ describe.skipIf(!haveRetail)("r_model.ts -- Mod_ForName sweep over every retail 
             failures.push(msg);
           }
         }
+        // rule 21 (regate hygiene, 2026-09-01): see test/gl_model_retail_
+        // qbsp_sweep.test.ts's identical fix and citation -- this loop is
+        // one long synchronous call stack over up to 28 real maps with no
+        // yield point for the GC to reclaim a freed map's geometry between
+        // iterations.
+        if (typeof Bun !== "undefined") Bun.gc(true);
       }
 
       // eslint-disable-next-line no-console

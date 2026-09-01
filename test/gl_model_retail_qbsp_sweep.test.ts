@@ -121,6 +121,16 @@ describe.skipIf(!haveRetail)("gl_model.ts -- Mod_ForName sweep over every retail
             failures.push(msg);
           }
         }
+        // rule 21 (regate hygiene, 2026-09-01, ported from the identical
+        // fix landed in quake-2-re-ts's own retail sweep tests): this loop
+        // is one long synchronous call stack loading up to 28 real maps
+        // with no yield point, so bun's JavaScriptCore GC never gets a
+        // chance to reclaim a freed map's geometry until the whole loop
+        // finishes -- measured in the re-ts sibling as a 100+GB RSS peak
+        // that crashed the whole-suite process (SIGTRAP, exit 133). Forcing
+        // a real collection after each map bounds the peak to roughly one
+        // map's garbage instead of all of them stacked up uncollected.
+        if (typeof Bun !== "undefined") Bun.gc(true);
       }
 
       // eslint-disable-next-line no-console
