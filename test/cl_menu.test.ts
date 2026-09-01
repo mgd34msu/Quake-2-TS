@@ -22,6 +22,7 @@ import { cls, KeydestT } from "../src/client/client";
 import { M_PushMenu, M_PopMenu, M_ForceMenuOff, M_Draw, M_Keydown, M_Menu_Main_f } from "../src/client/menu";
 import { MenuframeworkS, MenuactionS, MenuseparatorS, MenusliderS, MTYPE_ACTION, MTYPE_SEPARATOR, MTYPE_SLIDER } from "../src/client/qmenu";
 import { Menu_AddItem, Menu_AdjustCursor, Menu_SlideItem, Menu_ItemAtCursor } from "../src/client/qmenu_impl";
+import { SfxVolumeFormatter, SensitivityFormatter } from "../src/client/menu";
 
 beforeEach(() => {
   M_ForceMenuOff();
@@ -217,5 +218,33 @@ describe("Slider DoSlide clamping (via Menu_SlideItem)", () => {
 
     expect(slider.curvalue).toBe(5);
     expect(seenRec.v).toBe(5);
+  });
+});
+
+// QoL addition (Mike, 2026-09-01): live slider value readouts -- see
+// qmenu.ts's MenusliderS.valueFormatter header comment. Both formatters
+// mirror the real cvar-write transform their slider's own callback
+// (UpdateVolumeFunc/MouseSpeedFunc, src/client/menu.ts) performs, so these
+// tables are effectively "what will the cvar actually become" checks, not
+// just string-formatting checks.
+describe("SfxVolumeFormatter (s_options_sfxvolume_slider, minvalue=0 maxvalue=10, cvar s_volume = curvalue/10)", () => {
+  test.each([
+    [0, "0%"],
+    [1, "10%"],
+    [5, "50%"],
+    [10, "100%"], // native/max
+  ])("curvalue %i -> %s", (curvalue, expected) => {
+    expect(SfxVolumeFormatter(curvalue)).toBe(expected);
+  });
+});
+
+describe("SensitivityFormatter (s_options_sensitivity_slider, minvalue=2 maxvalue=22, cvar sensitivity = curvalue/2.0)", () => {
+  test.each([
+    [2, "1.0"], // minvalue
+    [11, "5.5"],
+    [20, "10.0"],
+    [22, "11.0"], // maxvalue
+  ])("curvalue %i -> %s (the real sensitivity value the cvar would hold)", (curvalue, expected) => {
+    expect(SensitivityFormatter(curvalue)).toBe(expected);
   });
 });

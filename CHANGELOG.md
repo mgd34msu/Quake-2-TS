@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2.1 — 2026-09-01
+
+### Video UX patch
+- Every menu slider shows a live value readout (resolution scale marks
+  "1.00x (native)").
+- New "scale to fullscreen" toggle (vid_scale_fit, default on), plus
+  the underlying fix: fullscreen blit geometry used the requested mode
+  size while the window silently resized to desktop-native (the
+  corner-anchored small-image bug).
+- Fullscreen renders at the selected mode and fills the display; no
+  physical mode switching.
+- Mode list shows aspect ratios on every entry and 720p/1080p/1440p/
+  2160p names where standard.
+- Video settings (fullscreen included) persist across restarts;
+  gl_mode/sw_mode were missing the archive flag in one path.
+
 ## v1.2.0 — 2026-09-01
 
 ### Features

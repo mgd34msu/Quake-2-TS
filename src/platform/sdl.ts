@@ -25,7 +25,7 @@ freezes its public struct layouts.
 */
 
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
-import { VID_CalcScaledRect } from "./vid_scale";
+import { VID_CalcBlitRect } from "./vid_scale";
 import { Cvar_Get, Cvar_VariableValue } from "../qcommon/cvar";
 import { Cmd_AddCommand } from "../qcommon/cmd";
 import { Com_DPrintf, Com_Printf } from "../qcommon/common";
@@ -194,6 +194,7 @@ const symbols = {
   SDL_CreateWindow: { args: ["cstring", "i32", "i32", "i32", "i32", "u32"], returns: "ptr" },
   SDL_DestroyWindow: { args: ["ptr"], returns: "void" },
   SDL_SetWindowTitle: { args: ["ptr", "cstring"], returns: "void" },
+  SDL_GetWindowSize: { args: ["ptr", "ptr", "ptr"], returns: "void" },
 
   SDL_CreateRenderer: { args: ["ptr", "i32", "u32"], returns: "ptr" },
   SDL_DestroyRenderer: { args: ["ptr"], returns: "void" },
@@ -336,9 +337,37 @@ let texHeight = 0;
 // aspect-preserving letterbox, via VID_CalcScaledRect below).
 let dispWidth = 0;
 let dispHeight = 0;
+// "Scale to fullscreen" toggle (Mike, 2026-09-01, cvar vid_scale_fit): true
+// (default) = SDLVID_Present's blit stretches to fill dispWidth/dispHeight
+// (VID_CalcScaledRect); false = 1:1 crisp pixels centered instead
+// (VID_CalcCenteredRect). See VID_CalcBlitRect (vid_scale.ts).
+let dispFit = true;
 let rgba = new Uint8Array(0);
 let framesPresented = 0;
 const dstRectBuf = new Int32Array(4); // reused SDL_Rect (x,y,w,h) for SDL_RenderCopy's dstrect
+
+// Int-out-param idiom for SDL_GetWindowSize, same as SDL_GetRelativeMouseState's
+// relX/relY buffers below (IN_ActivateMouse/IN_Move). SDL_WINDOW_FULLSCREEN_DESKTOP
+// (see this file's header comment on that flag) silently resizes the window to
+// the desktop's native resolution regardless of the size SDL_CreateWindow was
+// asked for -- this is how SDLVID_Init/glimp.ts's GLimp_SetMode learn the real
+// post-creation size instead of trusting the requested one.
+const winWidthBuf = new Int32Array(1);
+const winHeightBuf = new Int32Array(1);
+
+function querySDLWindowSize(win: Pointer | bigint): { width: number; height: number } {
+  const l = lib();
+  if (!l) return { width: 0, height: 0 };
+  l.symbols.SDL_GetWindowSize(win, winWidthBuf, winHeightBuf);
+  return { width: winWidthBuf[0], height: winHeightBuf[0] };
+}
+
+// glimp.ts needs the real post-creation fullscreen window size for its own
+// GLimp_SetMode -- see this function's header comment above.
+export function SDLGL_GetWindowSize(): { width: number; height: number } {
+  if (!window) return { width: 0, height: 0 };
+  return querySDLWindowSize(window);
+}
 
 export function SDLVID_Active(): boolean {
   return texture !== null;
@@ -381,7 +410,7 @@ vid_scale support), SDLVID_Present blits the smaller texture into an
 aspect-preserving letterboxed rect sized to fit the window instead of
 1:1 pixel-copying it.
 */
-export function SDLVID_Init(renderWidth: number, renderHeight: number, fullscreen: boolean, displayWidth: number = renderWidth, displayHeight: number = renderHeight): boolean {
+export function SDLVID_Init(renderWidth: number, renderHeight: number, fullscreen: boolean, displayWidth: number = renderWidth, displayHeight: number = renderHeight, fit: boolean = true): boolean {
   const l = lib();
   if (!l) return false;
   if (!initSubsystem(l, SDL_INIT_VIDEO)) return false;
@@ -412,8 +441,21 @@ export function SDLVID_Init(renderWidth: number, renderHeight: number, fullscree
 
   texWidth = renderWidth;
   texHeight = renderHeight;
-  dispWidth = displayWidth;
-  dispHeight = displayHeight;
+  // SDL_WINDOW_FULLSCREEN_DESKTOP silently resizes the window to the
+  // desktop's native resolution regardless of displayWidth/displayHeight --
+  // query the real post-creation size so the blit/clear math below paints
+  // the whole surface instead of a corner-anchored rect sized for the
+  // requested (smaller) mode. Falls back to the requested size if the query
+  // comes back 0x0 (e.g. the "dummy" video driver under the test harness).
+  if (fullscreen) {
+    const actual = querySDLWindowSize(window);
+    dispWidth = actual.width > 0 ? actual.width : displayWidth;
+    dispHeight = actual.height > 0 ? actual.height : displayHeight;
+  } else {
+    dispWidth = displayWidth;
+    dispHeight = displayHeight;
+  }
+  dispFit = fit;
   rgba = new Uint8Array(renderWidth * renderHeight * 4);
   framesPresented = 0;
   return true;
@@ -461,7 +503,7 @@ export function SDLVID_Present(buffer: Uint8Array, rowbytes: number, width: numb
   l.symbols.SDL_UpdateTexture(texture, null, rgba, width * 4);
   l.symbols.SDL_RenderClear(renderer); // paints the letterbox bars when dispW/H != texW/H
 
-  const rect = VID_CalcScaledRect(texWidth, texHeight, dispWidth, dispHeight);
+  const rect = VID_CalcBlitRect(texWidth, texHeight, dispWidth, dispHeight, dispFit);
   dstRectBuf[0] = rect.x;
   dstRectBuf[1] = rect.y;
   dstRectBuf[2] = rect.w;

@@ -71,12 +71,17 @@ export function SWimp_SetMode(width: number, height: number, mode: number, fulls
   // frame (game view and HUD together) is what gets scaled up on presentation.
   ri.Vid_NewWindow(render.width, render.height);
 
+  // "Scale to fullscreen" toggle (Mike, 2026-09-01, cvar vid_scale_fit): see
+  // vid_scale.ts's VID_CalcBlitRect header comment. Read here (not cached)
+  // for the same reason vid_scale itself is read fresh every SetMode call.
+  const fit = vidMod().VID_GetScaleFit();
+
   // rw_x11.c: "if ( !SWimp_InitGraphics( false ) ) return rserr_invalid_mode;"
   // -- a failed window/renderer/texture creation must not report success, or
   // the engine renders into a buffer nothing will ever present. When the SDL
   // backend is not armed (dedicated server, headless tests) a false return
   // is the designed degradation, not a failure: vid.buffer IS the frame.
-  if (!SDLVID_Init(render.width, render.height, fullscreen, info.width, info.height) && SDL_BackendEnabled()) {
+  if (!SDLVID_Init(render.width, render.height, fullscreen, info.width, info.height, fit) && SDL_BackendEnabled()) {
     ri.Con_Printf(0, " SDL window/renderer creation failed\n");
     return { pwidth: render.width, pheight: render.height, rserr: RserrT.rserr_invalid_mode };
   }

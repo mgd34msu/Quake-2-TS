@@ -512,6 +512,14 @@ function Slider_Draw(s: MenusliderS): void {
   for (i = 0; i < SLIDER_RANGE; i++) DrawChar(RCOLUMN_OFFSET + s.generic.x + i * 8 + parent.x + 8, s.generic.y + parent.y, 129);
   DrawChar(RCOLUMN_OFFSET + s.generic.x + i * 8 + parent.x + 8, s.generic.y + parent.y, 130);
   DrawChar(8 + RCOLUMN_OFFSET + parent.x + s.generic.x + (SLIDER_RANGE - 1) * 8 * s.range, s.generic.y + parent.y, 131);
+
+  // QoL addition (Mike, 2026-09-01): live value readout past the track, see
+  // qmenu.ts's MenusliderS.valueFormatter header comment. No formatter set
+  // means nothing past this point runs -- zero rendering change.
+  if (s.valueFormatter) {
+    const trackWidth = (SLIDER_RANGE + 2) * 8;
+    Menu_DrawString(s.generic.x + parent.x + RCOLUMN_OFFSET + trackWidth + 8, s.generic.y + parent.y, s.valueFormatter(s.curvalue));
+  }
 }
 
 function SpinControl_DoEnter(s: MenulistS): void {

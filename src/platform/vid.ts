@@ -124,6 +124,7 @@ const vid_modes: VidmodeT[] = [
 let r_customwidth: CvarT | null = null;
 let r_customheight: CvarT | null = null;
 let vid_scale: CvarT | null = null;
+let vid_scale_fit: CvarT | null = null;
 
 // mode -1: a custom resolution read from r_customwidth/r_customheight
 // instead of the fixed table above -- this port's own naming for the
@@ -162,7 +163,17 @@ export function VID_GetScale(): number {
   return VID_ClampScale(vid_scale ? vid_scale.value : VID_SCALE_DEFAULT);
 }
 
-export { VID_ClampScale, VID_ClampCustomWidth, VID_ClampCustomHeight, VID_CalcRenderSize, VID_CalcScaledRect, type VidRect } from "./vid_scale";
+// "Scale to fullscreen" toggle (Mike, 2026-09-01, cvar vid_scale_fit -- see
+// vid_scale.ts's VID_CalcBlitRect/VID_CalcOutputSize header comments and
+// vid_menu.ts's s_scale_fit_box). Defaults on: stretch-to-fill, matching
+// VID_CalcScaledRect's pre-existing behavior, so a fresh install never
+// starts with a small crisp-pixel image in a corner of a fullscreen display.
+export function VID_GetScaleFit(): boolean {
+  if (!vid_scale_fit) vid_scale_fit = Cvar_Get("vid_scale_fit", "1", CVAR_ARCHIVE);
+  return (vid_scale_fit ? vid_scale_fit.value : 1) !== 0;
+}
+
+export { VID_ClampScale, VID_ClampCustomWidth, VID_ClampCustomHeight, VID_CalcRenderSize, VID_CalcScaledRect, VID_CalcBlitRect, VID_CalcOutputSize, type VidRect } from "./vid_scale";
 
 export function VID_NewWindow(width: number, height: number): void {
   viddef.width = width;
@@ -391,6 +402,7 @@ export function VID_Init(): void {
   r_customwidth = Cvar_Get("r_customwidth", String(CUSTOM_WIDTH_DEFAULT), CVAR_ARCHIVE);
   r_customheight = Cvar_Get("r_customheight", String(CUSTOM_HEIGHT_DEFAULT), CVAR_ARCHIVE);
   vid_scale = Cvar_Get("vid_scale", String(VID_SCALE_DEFAULT), CVAR_ARCHIVE);
+  vid_scale_fit = Cvar_Get("vid_scale_fit", "1", CVAR_ARCHIVE);
 
   // Add some console commands that we want to handle
   Cmd_AddCommand("vid_restart", VID_Restart_f);

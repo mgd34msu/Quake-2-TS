@@ -854,6 +854,19 @@ function UpdateSoundQualityFunc(): void {
   CL_Snd_Restart_f();
 }
 
+// QoL addition (Mike, 2026-09-01): live value readouts for the two sliders
+// on this menu, wired onto s_options_sfxvolume_slider/s_options_sensitivity_slider
+// below via MenusliderS.valueFormatter (qmenu.ts) -- see that field's header
+// comment. Each mirrors the real transform its own callback
+// (UpdateVolumeFunc/MouseSpeedFunc) writes to the cvar, display-only.
+export function SfxVolumeFormatter(curvalue: number): string {
+  return `${Math.round(curvalue * 10)}%`;
+}
+
+export function SensitivityFormatter(curvalue: number): string {
+  return (curvalue / 2.0).toFixed(1);
+}
+
 function Options_MenuInit(): void {
   const cd_music_items = ["disabled", "enabled"];
   const quality_items = ["low", "high"];
@@ -875,6 +888,7 @@ function Options_MenuInit(): void {
   s_options_sfxvolume_slider.minvalue = 0;
   s_options_sfxvolume_slider.maxvalue = 10;
   s_options_sfxvolume_slider.curvalue = Cvar_VariableValue("s_volume") * 10;
+  s_options_sfxvolume_slider.valueFormatter = SfxVolumeFormatter;
 
   s_options_cdvolume_box.generic.type = MTYPE_SPINCONTROL;
   s_options_cdvolume_box.generic.x = 0;
@@ -907,6 +921,7 @@ function Options_MenuInit(): void {
   s_options_sensitivity_slider.generic.callback = MouseSpeedFunc;
   s_options_sensitivity_slider.minvalue = 2;
   s_options_sensitivity_slider.maxvalue = 22;
+  s_options_sensitivity_slider.valueFormatter = SensitivityFormatter;
 
   s_options_alwaysrun_box.generic.type = MTYPE_SPINCONTROL;
   s_options_alwaysrun_box.generic.x = 0;

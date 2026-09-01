@@ -57,7 +57,7 @@ import { Cvar_Get, Cvar_Set, Cvar_SetValue, Cvar_VariableValue } from "../qcommo
 import { CVAR_ARCHIVE, type CvarT } from "../shared/q_shared";
 import { viddef } from "../client/vid";
 import { re } from "../client/client";
-import { VID_ClampCustomHeight, VID_ClampCustomWidth, VID_ClampScale } from "./vid_scale";
+import { VID_ClampCustomHeight, VID_ClampCustomWidth, VID_ClampScale, VID_SCALE_MAX } from "./vid_scale";
 
 const REF_SOFT = 0;
 const REF_SOFTX11 = 1;
@@ -113,6 +113,12 @@ const s_windowed_mouse = new MenulistS();
 const s_customwidth_field: MenufieldS[] = [new MenufieldS(), new MenufieldS()];
 const s_customheight_field: MenufieldS[] = [new MenufieldS(), new MenufieldS()];
 const s_scale_slider: MenusliderS[] = [new MenusliderS(), new MenusliderS()];
+// QoL addition (Mike, 2026-09-01): "scale to fullscreen" toggle next to the
+// resolution-scale slider, cvar vid_scale_fit -- see vid_scale.ts's
+// VID_CalcBlitRect header comment and vid.ts's VID_GetScaleFit. Default on
+// (curvalue 1, "fit screen") so a fresh install never starts with a
+// postage-stamp-sized image in the corner of a fullscreen display.
+const s_scale_fit_box: MenulistS[] = [new MenulistS(), new MenulistS()];
 const s_apply_action: MenuactionS[] = [new MenuactionS(), new MenuactionS()];
 const s_defaults_action: MenuactionS[] = [new MenuactionS(), new MenuactionS()];
 
@@ -147,35 +153,82 @@ function BrightnessCallback(s: unknown): void {
   }
 }
 
+// QoL addition (Mike, 2026-09-01): colloquial + aspect-ratio labels past the
+// raw WxH numbers, e.g. "1920x1080 (1080p, 16:9)" -- his complaint was
+// slider feedback, but this is the same "no feedback on what the hell is
+// happening" fix applied to the mode list. Pure, tested (test/vid_menu.test.ts).
+
+function gcd(a: number, b: number): number {
+  let x = a;
+  let y = b;
+  while (y !== 0) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x;
+}
+
+// Only these four get a colloquial p-name -- no invented "4K"/"HD"/"QHD".
+const P_NAMES = new Map<string, string>([
+  ["1280x720", "720p"],
+  ["1920x1080", "1080p"],
+  ["2560x1440", "1440p"],
+  ["3840x2160", "2160p"],
+]);
+
+// 2560x1080 (true reduced ratio 64:27, ~2.370) and 3440x1440 (43:18,
+// ~2.389) are both sold as "21:9" (21/9 = 2.333) -- marketing convention,
+// not the literal reduced fraction. Special-cased per Mike's exact wording.
+const ULTRAWIDE_21_9 = new Set(["2560x1080", "3440x1440"]);
+
+function aspectLabel(width: number, height: number): string {
+  const key = `${width}x${height}`;
+  if (ULTRAWIDE_21_9.has(key)) return "21:9";
+  const ratio = width / height;
+  if (Math.abs(ratio - 16 / 9) <= 0.01) return "16:9"; // catches 1366x768's imprecise-but-colloquial 16:9
+  if (ratio === 1.6) return "16:10"; // exact 8:5 (1440x900, 1920x1200)
+  const d = gcd(width, height);
+  return `${width / d}:${height / d}`;
+}
+
+export function VID_ResolutionLabel(width: number, height: number): string {
+  const pName = P_NAMES.get(`${width}x${height}`);
+  const aspect = aspectLabel(width, height);
+  return pName ? `${width}x${height} (${pName}, ${aspect})` : `${width}x${height} (${aspect})`;
+}
+
 // Hoisted out of VID_MenuInit (module scope, not a local) so ApplyChanges
 // can reference CUSTOM_MODE_INDEX without recomputing/duplicating the list.
 // Mirrors vid.ts's vid_modes table index-for-index for modes 0-19, plus one
 // trailing "Custom" entry that maps to mode -1 instead of a table index --
-// see this file's header comment.
-const resolutions = [
-  "[320 240  ]",
-  "[400 300  ]",
-  "[512 384  ]",
-  "[640 480  ]",
-  "[800 600  ]",
-  "[960 720  ]",
-  "[1024 768 ]",
-  "[1152 864 ]",
-  "[1280 720 ]",
-  "[1280 960 ]",
-  "[1366 768 ]",
-  "[1440 900 ]",
-  "[1600 900 ]",
-  "[1600 1200]",
-  "[1920 1080]",
-  "[1920 1200]",
-  "[2048 1536]",
-  "[2560 1080]",
-  "[2560 1440]",
-  "[3440 1440]",
-  "[3840 2160]",
-  "[Custom   ]",
-];
+// see this file's header comment. Only the display STRINGS come from
+// VID_ResolutionLabel; the underlying vid.ts mode table (and this array's
+// length/index order) is untouched.
+const MODE_DIMENSIONS = [
+  [320, 240],
+  [400, 300],
+  [512, 384],
+  [640, 480],
+  [800, 600],
+  [960, 720],
+  [1024, 768],
+  [1152, 864],
+  [1280, 720],
+  [1280, 960],
+  [1366, 768],
+  [1440, 900],
+  [1600, 900],
+  [1600, 1200],
+  [1920, 1080],
+  [1920, 1200],
+  [2048, 1536],
+  [2560, 1080],
+  [2560, 1440],
+  [3440, 1440],
+  [3840, 2160],
+] as const;
+const resolutions = [...MODE_DIMENSIONS.map(([w, h]) => VID_ResolutionLabel(w, h)), "[Custom   ]"];
 const CUSTOM_MODE_INDEX = resolutions.length - 1;
 
 function ResetDefaults(): void {
@@ -197,6 +250,7 @@ function ApplyChanges(): void {
   s_customwidth_field[other].buffer = s_customwidth_field[s_current_menu_index].buffer;
   s_customheight_field[other].buffer = s_customheight_field[s_current_menu_index].buffer;
   s_scale_slider[other].curvalue = s_scale_slider[s_current_menu_index].curvalue;
+  s_scale_fit_box[other].curvalue = s_scale_fit_box[s_current_menu_index].curvalue;
 
   /*
   ** invert sense so greater = brighter, and scale to a range of 0.5 to 1.3
@@ -218,6 +272,7 @@ function ApplyChanges(): void {
   Cvar_SetValue("r_customwidth", VID_ClampCustomWidth(parseInt(s_customwidth_field[s_current_menu_index].buffer, 10)));
   Cvar_SetValue("r_customheight", VID_ClampCustomHeight(parseInt(s_customheight_field[s_current_menu_index].buffer, 10)));
   Cvar_SetValue("vid_scale", VID_ClampScale(s_scale_slider[s_current_menu_index].curvalue / 10));
+  Cvar_SetValue("vid_scale_fit", s_scale_fit_box[s_current_menu_index].curvalue);
   Cvar_SetValue("_windowed_mouse", s_windowed_mouse.curvalue);
 
   switch (s_ref_list[s_current_menu_index].curvalue) {
@@ -238,6 +293,38 @@ function ApplyChanges(): void {
   menuMod().M_ForceMenuOff();
 }
 
+// QoL addition (Mike, 2026-09-01): live value readouts for this menu's four
+// sliders, wired onto their MenusliderS.valueFormatter (qmenu.ts) below --
+// see that field's header comment. Each mirrors the real transform its own
+// callback (or ApplyChanges, for scale/texture-quality which only commit on
+// apply) writes to the cvar, display-only.
+
+// Mirrors s_scale_slider[i].maxvalue's own "VID_SCALE_MAX (1.0) * 10"
+// comment above -- not hardcoded, so a future VID_SCALE_MAX change stays in
+// sync with the "(native)" reference point below.
+const SCALE_SLIDER_MAX = Math.round(VID_SCALE_MAX * 10);
+
+export function ScaleFormatter(curvalue: number): string {
+  const scale = (curvalue / 10).toFixed(2);
+  return curvalue >= SCALE_SLIDER_MAX ? `${scale}x (native)` : `${scale}x`;
+}
+
+export function ScreenSizeFormatter(curvalue: number): string {
+  return `${curvalue * 10}%`;
+}
+
+// Same gamma transform as ApplyChanges/BrightnessCallback's
+// `0.8 - (curvalue / 10.0 - 0.5) + 0.5`, algebraically reduced.
+export function BrightnessFormatter(curvalue: number): string {
+  return (1.8 - curvalue / 10).toFixed(2);
+}
+
+const TQ_LABELS = ["lowest", "low", "medium", "high"];
+export function TextureQualityFormatter(curvalue: number): string {
+  const idx = Math.max(0, Math.min(TQ_LABELS.length - 1, Math.round(curvalue)));
+  return `${TQ_LABELS[idx]} (picmip ${3 - idx})`;
+}
+
 /*
 ** VID_MenuInit
 */
@@ -247,8 +334,17 @@ export function VID_MenuInit(): void {
 
   if (!gl_driver) gl_driver = Cvar_Get("gl_driver", "opengl32", 0);
   if (!gl_picmip) gl_picmip = Cvar_Get("gl_picmip", "0", 0);
-  if (!gl_mode) gl_mode = Cvar_Get("gl_mode", "3", 0);
-  if (!sw_mode) sw_mode = Cvar_Get("sw_mode", "0", 0);
+  // Bug fix (Mike, 2026-09-01, Part G persistence audit): gl_rmain.ts's
+  // R_Init and r_main.ts's R_Init register these two with CVAR_ARCHIVE, but
+  // that registration only runs once the matching refresh has actually
+  // loaded. A player who never switches to the GL refresh in this session
+  // has gl_mode created HERE first, with flags 0 -- Cvar_Get's flags OR in
+  // (src/qcommon/cvar.ts), never downgrade, but a later Cvar_SetValue never
+  // adds ARCHIVE either, so a value changed only through this menu silently
+  // never made it into config.cfg. Matching CVAR_ARCHIVE here closes that
+  // gap regardless of which refresh (if any) has loaded this session.
+  if (!gl_mode) gl_mode = Cvar_Get("gl_mode", "3", CVAR_ARCHIVE);
+  if (!sw_mode) sw_mode = Cvar_Get("sw_mode", "0", CVAR_ARCHIVE);
   if (!gl_ext_palettedtexture) gl_ext_palettedtexture = Cvar_Get("gl_ext_palettedtexture", "1", CVAR_ARCHIVE);
 
   if (!sw_stipplealpha) sw_stipplealpha = Cvar_Get("sw_stipplealpha", "0", CVAR_ARCHIVE);
@@ -341,27 +437,37 @@ export function VID_MenuInit(): void {
     s_scale_slider[i].generic.name = "resolution scale";
     s_scale_slider[i].minvalue = 1; // VID_SCALE_MIN (0.1) * 10
     s_scale_slider[i].maxvalue = 10; // VID_SCALE_MAX (1.0) * 10
+    s_scale_slider[i].valueFormatter = ScaleFormatter;
+
+    s_scale_fit_box[i].generic.type = MTYPE_SPINCONTROL;
+    s_scale_fit_box[i].generic.x = 0;
+    s_scale_fit_box[i].generic.y = 50;
+    s_scale_fit_box[i].generic.name = "scale to fullscreen";
+    s_scale_fit_box[i].itemnames = ["1:1 pixels", "fit screen"];
+    s_scale_fit_box[i].curvalue = Cvar_VariableValue("vid_scale_fit") !== 0 ? 1 : 0;
 
     s_screensize_slider[i].generic.type = MTYPE_SLIDER;
     s_screensize_slider[i].generic.x = 0;
-    s_screensize_slider[i].generic.y = 50;
+    s_screensize_slider[i].generic.y = 60;
     s_screensize_slider[i].generic.name = "screen size";
     s_screensize_slider[i].minvalue = 3;
     s_screensize_slider[i].maxvalue = 12;
     s_screensize_slider[i].generic.callback = ScreenSizeCallback;
+    s_screensize_slider[i].valueFormatter = ScreenSizeFormatter;
 
     s_brightness_slider[i].generic.type = MTYPE_SLIDER;
     s_brightness_slider[i].generic.x = 0;
-    s_brightness_slider[i].generic.y = 60;
+    s_brightness_slider[i].generic.y = 70;
     s_brightness_slider[i].generic.name = "brightness";
     s_brightness_slider[i].generic.callback = BrightnessCallback;
     s_brightness_slider[i].minvalue = 5;
     s_brightness_slider[i].maxvalue = 13;
     s_brightness_slider[i].curvalue = (1.3 - vidGammaC.value + 0.5) * 10;
+    s_brightness_slider[i].valueFormatter = BrightnessFormatter;
 
     s_fs_box[i].generic.type = MTYPE_SPINCONTROL;
     s_fs_box[i].generic.x = 0;
-    s_fs_box[i].generic.y = 70;
+    s_fs_box[i].generic.y = 80;
     s_fs_box[i].generic.name = "fullscreen";
     s_fs_box[i].itemnames = yesno_names;
     s_fs_box[i].curvalue = vidFullscreenC.value | 0;
@@ -369,41 +475,42 @@ export function VID_MenuInit(): void {
     s_defaults_action[i].generic.type = MTYPE_ACTION;
     s_defaults_action[i].generic.name = "reset to default";
     s_defaults_action[i].generic.x = 0;
-    s_defaults_action[i].generic.y = 120;
+    s_defaults_action[i].generic.y = 130;
     s_defaults_action[i].generic.callback = ResetDefaults;
 
     s_apply_action[i].generic.type = MTYPE_ACTION;
     s_apply_action[i].generic.name = "apply";
     s_apply_action[i].generic.x = 0;
-    s_apply_action[i].generic.y = 130;
+    s_apply_action[i].generic.y = 140;
     s_apply_action[i].generic.callback = ApplyChanges;
   }
 
   s_stipple_box.generic.type = MTYPE_SPINCONTROL;
   s_stipple_box.generic.x = 0;
-  s_stipple_box.generic.y = 90;
+  s_stipple_box.generic.y = 100;
   s_stipple_box.generic.name = "stipple alpha";
   s_stipple_box.curvalue = stippleC.value | 0;
   s_stipple_box.itemnames = yesno_names;
 
   s_windowed_mouse.generic.type = MTYPE_SPINCONTROL;
   s_windowed_mouse.generic.x = 0;
-  s_windowed_mouse.generic.y = 100;
+  s_windowed_mouse.generic.y = 110;
   s_windowed_mouse.generic.name = "windowed mouse";
   s_windowed_mouse.curvalue = winMouseC.value | 0;
   s_windowed_mouse.itemnames = yesno_names;
 
   s_tq_slider.generic.type = MTYPE_SLIDER;
   s_tq_slider.generic.x = 0;
-  s_tq_slider.generic.y = 90;
+  s_tq_slider.generic.y = 100;
   s_tq_slider.generic.name = "texture quality";
   s_tq_slider.minvalue = 0;
   s_tq_slider.maxvalue = 3;
   s_tq_slider.curvalue = 3 - glPicmipC.value;
+  s_tq_slider.valueFormatter = TextureQualityFormatter;
 
   s_paletted_texture_box.generic.type = MTYPE_SPINCONTROL;
   s_paletted_texture_box.generic.x = 0;
-  s_paletted_texture_box.generic.y = 100;
+  s_paletted_texture_box.generic.y = 110;
   s_paletted_texture_box.generic.name = "8-bit textures";
   s_paletted_texture_box.itemnames = yesno_names;
   s_paletted_texture_box.curvalue = glPalC.value | 0;
@@ -413,6 +520,7 @@ export function VID_MenuInit(): void {
   Menu_AddItem(s_software_menu, s_customwidth_field[SOFTWARE_MENU]);
   Menu_AddItem(s_software_menu, s_customheight_field[SOFTWARE_MENU]);
   Menu_AddItem(s_software_menu, s_scale_slider[SOFTWARE_MENU]);
+  Menu_AddItem(s_software_menu, s_scale_fit_box[SOFTWARE_MENU]);
   Menu_AddItem(s_software_menu, s_screensize_slider[SOFTWARE_MENU]);
   Menu_AddItem(s_software_menu, s_brightness_slider[SOFTWARE_MENU]);
   Menu_AddItem(s_software_menu, s_fs_box[SOFTWARE_MENU]);
@@ -424,6 +532,7 @@ export function VID_MenuInit(): void {
   Menu_AddItem(s_opengl_menu, s_customwidth_field[OPENGL_MENU]);
   Menu_AddItem(s_opengl_menu, s_customheight_field[OPENGL_MENU]);
   Menu_AddItem(s_opengl_menu, s_scale_slider[OPENGL_MENU]);
+  Menu_AddItem(s_opengl_menu, s_scale_fit_box[OPENGL_MENU]);
   Menu_AddItem(s_opengl_menu, s_screensize_slider[OPENGL_MENU]);
   Menu_AddItem(s_opengl_menu, s_brightness_slider[OPENGL_MENU]);
   Menu_AddItem(s_opengl_menu, s_fs_box[OPENGL_MENU]);
@@ -439,6 +548,13 @@ export function VID_MenuInit(): void {
   Menu_Center(s_opengl_menu);
   s_opengl_menu.x -= 8;
   s_software_menu.x -= 8;
+}
+
+// Test seam (Mike, 2026-09-01): exposes s_scale_fit_box's curvalue without
+// reaching into this module's private per-submenu widget arrays -- see
+// test/vid_menu.test.ts.
+export function VID_MenuScaleFitValue(menuIndex: number = SOFTWARE_MENU): number {
+  return s_scale_fit_box[menuIndex].curvalue;
 }
 
 /*
