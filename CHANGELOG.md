@@ -22,7 +22,8 @@
 
 ### Fidelity
 - Reverted an accidental port of re-release wheel machinery; this tree
-  remains bug-for-bug vanilla 3.21 wherever vanilla is correct.
+  matches vanilla 3.21 behavior exactly, with vanilla's own original
+  quirks preserved on purpose.
 
 ### Testing
 - Sky-rotation angle math pinned against time-unit regressions.
